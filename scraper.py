@@ -2,7 +2,6 @@
 Coupon Code Scraper
 Usage: python scraper.py
 """
-
 import os
 import re
 import csv
@@ -17,7 +16,6 @@ import config
 # ============================================
 # SETUP
 # ============================================
-
 def create_folders():
     os.makedirs("data", exist_ok=True)
 
@@ -88,7 +86,6 @@ def save_deal_row(brand, region, page_url, deal_url, label):
 # ============================================
 # SEARCH
 # ============================================
-
 def build_search_url(query, region, page_num):
     if config.SEARCH_ENGINE == "bing":
         cc = "gb" if region == "uk" else "us"
@@ -104,34 +101,25 @@ def search_for_coupons(page, brand, region):
         f"coupon code {brand}",
         f"{brand} discount code",
     ]
-
     all_urls = []
-
     for query in queries:
         for page_num in range(1, config.SEARCH_PAGES + 1):
             try:
                 url = build_search_url(query, region, page_num)
                 page.goto(url, wait_until="domcontentloaded", timeout=20000)
                 random_delay(2, 4)
-
                 wait_for_captcha(page)
-
                 try:
                     page.wait_for_selector("h3", timeout=10000)
                 except Exception:
                     pass
-
                 links = extract_search_links(page)
                 print(f"     🔎 Page {page_num}: {len(links)} links mile")
-
                 save_urls_to_csv(brand, region, page_num, links)
-
                 all_urls.extend(links)
                 random_delay(config.MIN_DELAY, config.MAX_DELAY)
-
             except Exception as e:
                 print(f"  ⚠️  Search error: {e}")
-
     return filter_coupon_urls(all_urls)[:config.MAX_SITES_PER_BRAND]
 
 
@@ -153,7 +141,6 @@ def extract_search_links(page):
                     links.append(href)
     except Exception:
         pass
-
     seen = set()
     unique = []
     for u in links:
@@ -169,14 +156,12 @@ def filter_coupon_urls(urls):
         "wikipedia.org", "reddit.com", "pinterest.com", "tiktok.com",
         "google.com", "bing.com",
     ]
-
     coupon_indicators = [
         "coupon", "deal", "discount", "promo", "voucher", "offer",
         "retailmenot", "honey", "groupon", "couponfollow",
         "vouchercodes", "hotukdeals", "dealspotr", "savings",
         "couponcabin", "offers.com",
     ]
-
     priority, normal = [], []
     for url in urls:
         u = url.lower()
@@ -186,9 +171,7 @@ def filter_coupon_urls(urls):
             priority.append(url)
         else:
             normal.append(url)
-
     combined = priority + normal
-
     seen = set()
     unique = []
     for url in combined:
@@ -201,7 +184,6 @@ def filter_coupon_urls(urls):
 # ============================================
 # CAPTCHA
 # ============================================
-
 def is_captcha_page(page):
     url = page.url.lower()
     if "/sorry/" in url or "captcha" in url:
@@ -222,26 +204,21 @@ def is_captcha_page(page):
 def wait_for_captcha(page):
     if not is_captcha_page(page):
         return
-
     print("  🛑 CAPTCHA detected! Browser mein manually solve karo...")
-
     waited = 0
     while waited < config.CAPTCHA_TIMEOUT:
         time.sleep(config.CAPTCHA_CHECK)
         waited += config.CAPTCHA_CHECK
-
         if not is_captcha_page(page):
             print(f"  ✅ CAPTCHA solved! Foran aage ({waited}s)")
             random_delay(2, 3)
             return
-
     print("  ⚠️  CAPTCHA timeout — skip kar rahe hain")
 
 
 # ============================================
 # EXTRACTION — 3 LAYERS
 # ============================================
-
 def extract_codes_from_page(page, url, brand, region):
     """
     Layer 1: Poora HTML → data attrs / JSON / scripts
@@ -250,14 +227,21 @@ def extract_codes_from_page(page, url, brand, region):
     """
     found_codes = []
     found_deals = []
-
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=20000)
         random_delay(2, 4)
-
         if is_captcha_page(page):
             print("    ⚠️  CAPTCHA on site — skipping")
             return [], []
+
+        # ---------- NAYA: Clipboard permission + overlays hatana ----------
+        try:
+            origin = "/".join(page.url.split("/")[:3])
+            page.context.grant_permissions(
+                ["clipboard-read", "clipboard-write"], origin=origin)
+        except Exception:
+            pass
+        dismiss_overlays(page)
 
         # Scroll — lazy content
         try:
@@ -285,41 +269,38 @@ def extract_codes_from_page(page, url, brand, region):
         btn_codes, btn_deals = click_all_buttons(page, url, brand, region)
         found_codes.extend(btn_codes)
         found_deals.extend(btn_deals)
-
     except Exception as e:
         print(f"    ⚠️  Page error: {e}")
-
     return clean_coupons(found_codes), found_deals
 
 
 # ---------- Layer 1: HTML mining ----------
-
 def mine_from_html(html):
     codes = []
-
     # data attributes
     for attr in ["data-code", "data-clipboard-text", "data-coupon-code",
                  "data-promo-code", "data-voucher-code"]:
         for m in re.findall(attr + r'=["\']([^"\']+)["\']', html):
             if looks_like_code(m):
                 codes.append({"code": m, "method": "html_attr"})
-
     # JSON values: "code":"EXTRA100"
     for m in re.findall(r'["\'](?:code|couponCode|promoCode|voucherCode)["\']\s*[:=]\s*["\']([^"\']+)["\']', html):
         if looks_like_code(m):
             codes.append({"code": m, "method": "html_json"})
-
     return codes
 
 
 # ---------- Layer 2: Text mining ----------
-
-def mine_from_text(text):
+def mine_from_text(text, require_digit=True):
     codes = []
     if not text:
         return codes
-    candidates = re.findall(r'\b[A-Za-z][A-Za-z0-9\-_]{3,19}\b', text)
+    candidates = re.findall(r'\b[A-Za-z][A-Za-z0-9-_]{3,19}\b', text)
     for cand in candidates:
+        # NAYA: poore page ke text mein sirf wo codes jin mein digit ho
+        # (garbage jaise T-SHIRT, NEWSLETTERS khatam)
+        if require_digit and not re.search(r'\d', cand):
+            continue
         if code_score(cand) >= 2:
             codes.append({"code": cand, "method": "text"})
     return codes
@@ -339,14 +320,95 @@ def code_score(text):
     return score
 
 
-# ---------- Layer 3: Buttons ----------
+# ---------- NAYA: Overlays / cookie banners hatana ----------
+def dismiss_overlays(page):
+    sels = [
+        "button:has-text('Accept All')", "button:has-text('Accept')",
+        "button:has-text('Allow All')", "button:has-text('Got It')",
+        "button:has-text('No Thanks')", "button:has-text('Close')",
+        "button:has-text('Dismiss')", "[aria-label*='lose']",
+        "[class*='cookie'] button", "[id*='consent'] button",
+        "[class*='consent'] button",
+    ]
+    for sel in sels:
+        try:
+            for el in page.query_selector_all(sel):
+                try:
+                    if el.is_visible():
+                        el.click(timeout=1000)
+                        random_delay(0.3, 0.6)
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
+
+# ---------- NAYA: Clipboard se code parhna ----------
+def read_clipboard(page):
+    try:
+        txt = page.evaluate("() => navigator.clipboard.readText()")
+        if txt:
+            return txt.strip()
+    except Exception:
+        pass
+    return None
+
+
+# ---------- NAYA: Click ke BAAD code dhoondna ----------
+MODAL_SELECTORS = [
+    "[role='dialog']", "[class*='modal']", "[class*='Modal']",
+    "[class*='popup']", "[class*='Popup']", "[class*='overlay']",
+    "[class*='coupon']", "[class*='Coupon']", "[class*='reveal']",
+    "[class*='clipboard']", "[id*='coupon']",
+]
+
+
+def extract_after_click(page, before_text):
+    codes = []
+    # 1) Clipboard (Copy Code buttons)
+    clip = read_clipboard(page)
+    if clip:
+        for part in re.split(r'\s+', clip):
+            if looks_like_code(part):
+                codes.append({"code": part, "method": "clipboard"})
+    # 2) Modal / popup ka visible text (yahan digit rule nahi)
+    for sel in MODAL_SELECTORS:
+        try:
+            for el in page.query_selector_all(sel):
+                try:
+                    if el.is_visible():
+                        codes.extend(mine_from_text(el.inner_text(), require_digit=False))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    # 3) HTML dobara mine karo (input value + data-code click ke baad aata ha)
+    try:
+        html = page.content()
+        codes.extend(mine_from_html(html))
+        for m in re.findall(r'<input[^>]+value=["\']([^"\']+)["\']', html):
+            if looks_like_code(m):
+                codes.append({"code": m, "method": "input_value"})
+    except Exception:
+        pass
+    # 4) Sirf NAYA text (diff) — garbage kam, code zyada
+    try:
+        after_text = page.inner_text("body")
+        new_words = set(after_text.split()) - set(before_text.split())
+        if new_words:
+            codes.extend(mine_from_text(" ".join(new_words), require_digit=False))
+    except Exception:
+        pass
+    return codes
+
+
+# ---------- Layer 3: Buttons (FIXED) ----------
 REVEAL_WORDS = [
     "show code", "get code", "reveal code", "view code", "copy code",
     "see code", "reveal", "show coupon", "get coupon", "show discount",
     "get discount", "show voucher", "get voucher", "copy",
+    "click to reveal", "tap to reveal", "unmask", "unlock",
 ]
-
 DEAL_WORDS = [
     "get deal", "get offer", "shop now", "go to store", "get reward",
     "activate", "use deal", "claim", "get discount", "shop",
@@ -356,9 +418,8 @@ DEAL_WORDS = [
 def click_all_buttons(page, page_url, brand, region):
     codes = []
     deals = []
-
     try:
-        buttons = page.query_selector_all("button, a")
+        buttons = page.query_selector_all("button, a, [role='button']")
     except Exception:
         buttons = []
 
@@ -368,53 +429,58 @@ def click_all_buttons(page, page_url, brand, region):
     for btn in buttons:
         if clicked >= 30:
             break
-
         try:
-            txt = btn.inner_text().strip()
+            txt = (btn.inner_text() or "").strip()
         except Exception:
             continue
-
         if not txt or len(txt) > 40:
             continue
-
         low = txt.lower()
 
         is_reveal = any(w in low for w in REVEAL_WORDS)
         is_deal = any(w in low for w in DEAL_WORDS)
-
         if not is_reveal and not is_deal:
             continue
 
         # ---------- REVEAL BUTTON ----------
         if is_reveal:
+            before_text = ""
+            try:
+                before_text = page.inner_text("body")
+            except Exception:
+                pass
+
+            pages_before = len(page.context.pages)
             try:
                 btn.scroll_into_view_if_needed()
-                btn.click()
+                btn.click(timeout=5000)
                 clicked += 1
                 random_delay(1.5, 2.5)
             except Exception:
-                continue
+                # Click block hua (overlay?) — overlays hatao, retry
+                dismiss_overlays(page)
+                try:
+                    btn.click(timeout=3000)
+                    clicked += 1
+                    random_delay(1.5, 2.5)
+                except Exception:
+                    continue
 
-            # Click ke baad: button ke paas + poora page text
-            try:
-                nearby = btn.evaluate("""el => {
-                    let node = el;
-                    for (let i = 0; i < 5; i++) {
-                        if (!node.parentElement) break;
-                        node = node.parentElement;
-                    }
-                    return node.innerText || '';
-                }""")
-                codes.extend(mine_from_text(nearby))
-            except Exception:
-                pass
+            # Naya tab khula? (kai sites code naye tab mein dikhati hain)
+            if len(page.context.pages) > pages_before:
+                new_page = page.context.pages[-1]
+                try:
+                    new_page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    codes.extend(mine_from_html(new_page.content()))
+                    codes.extend(mine_from_text(new_page.inner_text("body")))
+                except Exception:
+                    pass
+                try:
+                    new_page.close()
+                except Exception:
+                    pass
 
-            try:
-                new_text = page.inner_text("body")
-                codes.extend(mine_from_text(new_text))
-            except Exception:
-                pass
-
+            codes.extend(extract_after_click(page, before_text))
             close_popups(page)
 
         # ---------- DEAL BUTTON ----------
@@ -450,7 +516,6 @@ def close_popups(page):
 # ============================================
 # VALIDATION
 # ============================================
-
 BAD_WORDS = {
     "code", "codes", "coupon", "coupons", "click", "here", "shop",
     "sale", "sales", "free", "cart", "shipping", "delivery", "today",
@@ -474,7 +539,7 @@ BAD_WORDS = {
     "days", "day", "activate", "claim", "alert", "alerts", "email",
     "enter", "instantly", "popular", "trending", "stores", "browse",
     "categories", "category", "brand", "brands", "summary", "highlights",
-    "average", "rating", "ratings", "stars", "live", "last",
+    "average", "rating", "ratings", "stars", "live",
 }
 
 
@@ -482,7 +547,6 @@ def looks_like_code(text):
     if not text:
         return False
     text = text.strip()
-
     if len(text) < 4 or len(text) > 20:
         return False
     if " " in text:
@@ -493,13 +557,11 @@ def looks_like_code(text):
         return False
     if text.lower() in BAD_WORDS:
         return False
-
     if text.isalpha():
         if text.isupper() and len(text) <= 8:
             return False
         if text.islower():
             return False
-
     return True
 
 
@@ -518,7 +580,6 @@ def clean_coupons(coupons):
 # ============================================
 # STORAGE
 # ============================================
-
 def is_duplicate(brand, code, seen_codes):
     return code.upper() in seen_codes.get(brand.lower(), [])
 
@@ -534,7 +595,6 @@ def mark_as_seen(brand, code, seen_codes):
 # ============================================
 # UTILS
 # ============================================
-
 def random_delay(a, b):
     time.sleep(random.uniform(a, b))
 
@@ -542,20 +602,16 @@ def random_delay(a, b):
 # ============================================
 # MAIN
 # ============================================
-
 def main():
     print("=" * 50)
     print("🎫 COUPON CODE SCRAPER")
     print("=" * 50)
-
     create_folders()
     brands = load_brands()
     if not brands:
         return
-
     seen_codes = load_seen_codes()
     total_new = 0
-
     print(f"🔍 Engine: {config.SEARCH_ENGINE.upper()} | 🌍 {config.REGIONS} | 📋 {len(brands)} brands\n")
 
     with sync_playwright() as p:
@@ -569,10 +625,6 @@ def main():
                 locale="en-US",
                 args=["--disable-blink-features=AutomationControlled"],
             )
-            try:
-                context.grant_permissions([])
-            except Exception:
-                pass
             page = context.pages[0] if context.pages else context.new_page()
         else:
             browser = p.chromium.launch(headless=config.HEADLESS, slow_mo=config.SLOW_MO)
@@ -586,20 +638,15 @@ def main():
         for i, brand in enumerate(brands, 1):
             print(f"\n🏷️  [{i}/{len(brands)}] {brand}")
             count = 0
-
             for region in config.REGIONS:
                 urls = search_for_coupons(page, brand, region)
                 print(f"  🌍 {region.upper()}: {len(urls)} sites visit hongi")
-
                 for j, url in enumerate(urls, 1):
                     print(f"    🌐 [{j}/{len(urls)}] {url[:60]}")
-
                     codes, deals = extract_codes_from_page(page, url, brand, region)
-
                     for coupon in codes:
                         if not is_duplicate(brand, coupon["code"], seen_codes):
                             mark_as_seen(brand, coupon["code"], seen_codes)
-
                             save_result_row({
                                 "brand": brand,
                                 "code": coupon["code"],
@@ -611,14 +658,12 @@ def main():
                             count += 1
                             print(f"       🎫 {brand.upper()}: {coupon['code']} ({coupon['method']})")
                     random_delay(1, 3)
-
             print(f"  → {count} new codes ✅" if count else "  → 0 codes ❌")
             total_new += count
 
         context.close()
 
     save_seen_codes(seen_codes)
-
     print(f"\n{'=' * 50}")
     print(f"✅ DONE! Total new codes: {total_new}")
     print(f"📁 Codes: {config.OUTPUT_CSV}")

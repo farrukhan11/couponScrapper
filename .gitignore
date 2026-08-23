@@ -1,0 +1,17 @@
+# Environments
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Browser Data
+chrome_profile/
+
+# Data Files
+data/
+*.csv
+*.json
+!urls.csv
+
+# Others
+.DS_Store
