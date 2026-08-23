@@ -12,6 +12,12 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import config
 
+# AI agent (agar file na ho to crash na ho)
+try:
+    import ai_agent
+except ImportError:
+    ai_agent = None
+
 
 # ============================================
 # SETUP
@@ -217,14 +223,9 @@ def wait_for_captcha(page):
 
 
 # ============================================
-# EXTRACTION — 3 LAYERS
+# EXTRACTION — LAYERS
 # ============================================
 def extract_codes_from_page(page, url, brand, region):
-    """
-    Layer 1: Poora HTML → data attrs / JSON / scripts
-    Layer 2: Visible text
-    Layer 3: Har button click → naye codes + deal URLs
-    """
     found_codes = []
     found_deals = []
     try:
@@ -234,7 +235,7 @@ def extract_codes_from_page(page, url, brand, region):
             print("    ⚠️  CAPTCHA on site — skipping")
             return [], []
 
-        # ---------- NAYA: Clipboard permission + overlays hatana ----------
+        # Clipboard permission + overlays hatana
         try:
             origin = "/".join(page.url.split("/")[:3])
             page.context.grant_permissions(
@@ -265,10 +266,19 @@ def extract_codes_from_page(page, url, brand, region):
         except Exception:
             pass
 
-        # ---------- LAYER 3: Buttons ----------
-        btn_codes, btn_deals = click_all_buttons(page, url, brand, region)
-        found_codes.extend(btn_codes)
-        found_deals.extend(btn_deals)
+        # ---------- LAYER 3: AI AGENT (sochta ha + decide karta ha) ----------
+        # Yehi WOH change ha: AI har page par decide karti ha kia karna ha.
+        # Agar AI off ho ya ai_agent.py na ho → purana button clicker chalta ha.
+        if getattr(config, "USE_AI", False) and ai_agent is not None:
+            try:
+                found_codes.extend(ai_agent.ai_agent_visit(page, brand))
+            except Exception as e:
+                print(f"    ⚠️ AI agent error: {e}")
+        else:
+            btn_codes, btn_deals = click_all_buttons(page, url, brand, region)
+            found_codes.extend(btn_codes)
+            found_deals.extend(btn_deals)
+
     except Exception as e:
         print(f"    ⚠️  Page error: {e}")
     return clean_coupons(found_codes), found_deals
@@ -277,13 +287,11 @@ def extract_codes_from_page(page, url, brand, region):
 # ---------- Layer 1: HTML mining ----------
 def mine_from_html(html):
     codes = []
-    # data attributes
     for attr in ["data-code", "data-clipboard-text", "data-coupon-code",
                  "data-promo-code", "data-voucher-code"]:
         for m in re.findall(attr + r'=["\']([^"\']+)["\']', html):
             if looks_like_code(m):
                 codes.append({"code": m, "method": "html_attr"})
-    # JSON values: "code":"EXTRA100"
     for m in re.findall(r'["\'](?:code|couponCode|promoCode|voucherCode)["\']\s*[:=]\s*["\']([^"\']+)["\']', html):
         if looks_like_code(m):
             codes.append({"code": m, "method": "html_json"})
@@ -297,8 +305,6 @@ def mine_from_text(text, require_digit=True):
         return codes
     candidates = re.findall(r'\b[A-Za-z][A-Za-z0-9-_]{3,19}\b', text)
     for cand in candidates:
-        # NAYA: poore page ke text mein sirf wo codes jin mein digit ho
-        # (garbage jaise T-SHIRT, NEWSLETTERS khatam)
         if require_digit and not re.search(r'\d', cand):
             continue
         if code_score(cand) >= 2:
@@ -320,7 +326,7 @@ def code_score(text):
     return score
 
 
-# ---------- NAYA: Overlays / cookie banners hatana ----------
+# ---------- Overlays / cookie banners hatana ----------
 def dismiss_overlays(page):
     sels = [
         "button:has-text('Accept All')", "button:has-text('Accept')",
@@ -343,7 +349,7 @@ def dismiss_overlays(page):
             pass
 
 
-# ---------- NAYA: Clipboard se code parhna ----------
+# ---------- Clipboard se code parhna ----------
 def read_clipboard(page):
     try:
         txt = page.evaluate("() => navigator.clipboard.readText()")
@@ -354,7 +360,7 @@ def read_clipboard(page):
     return None
 
 
-# ---------- NAYA: Click ke BAAD code dhoondna ----------
+# ---------- Click ke BAAD code dhoondna ----------
 MODAL_SELECTORS = [
     "[role='dialog']", "[class*='modal']", "[class*='Modal']",
     "[class*='popup']", "[class*='Popup']", "[class*='overlay']",
@@ -365,13 +371,11 @@ MODAL_SELECTORS = [
 
 def extract_after_click(page, before_text):
     codes = []
-    # 1) Clipboard (Copy Code buttons)
     clip = read_clipboard(page)
     if clip:
         for part in re.split(r'\s+', clip):
             if looks_like_code(part):
                 codes.append({"code": part, "method": "clipboard"})
-    # 2) Modal / popup ka visible text (yahan digit rule nahi)
     for sel in MODAL_SELECTORS:
         try:
             for el in page.query_selector_all(sel):
@@ -382,7 +386,6 @@ def extract_after_click(page, before_text):
                     continue
         except Exception:
             pass
-    # 3) HTML dobara mine karo (input value + data-code click ke baad aata ha)
     try:
         html = page.content()
         codes.extend(mine_from_html(html))
@@ -391,7 +394,6 @@ def extract_after_click(page, before_text):
                 codes.append({"code": m, "method": "input_value"})
     except Exception:
         pass
-    # 4) Sirf NAYA text (diff) — garbage kam, code zyada
     try:
         after_text = page.inner_text("body")
         new_words = set(after_text.split()) - set(before_text.split())
@@ -402,7 +404,7 @@ def extract_after_click(page, before_text):
     return codes
 
 
-# ---------- Layer 3: Buttons (FIXED) ----------
+# ---------- Purana button clicker (sirf AI off ho to use hota ha) ----------
 REVEAL_WORDS = [
     "show code", "get code", "reveal code", "view code", "copy code",
     "see code", "reveal", "show coupon", "get coupon", "show discount",
@@ -442,7 +444,6 @@ def click_all_buttons(page, page_url, brand, region):
         if not is_reveal and not is_deal:
             continue
 
-        # ---------- REVEAL BUTTON ----------
         if is_reveal:
             before_text = ""
             try:
@@ -457,7 +458,6 @@ def click_all_buttons(page, page_url, brand, region):
                 clicked += 1
                 random_delay(1.5, 2.5)
             except Exception:
-                # Click block hua (overlay?) — overlays hatao, retry
                 dismiss_overlays(page)
                 try:
                     btn.click(timeout=3000)
@@ -466,7 +466,6 @@ def click_all_buttons(page, page_url, brand, region):
                 except Exception:
                     continue
 
-            # Naya tab khula? (kai sites code naye tab mein dikhati hain)
             if len(page.context.pages) > pages_before:
                 new_page = page.context.pages[-1]
                 try:
@@ -483,7 +482,6 @@ def click_all_buttons(page, page_url, brand, region):
             codes.extend(extract_after_click(page, before_text))
             close_popups(page)
 
-        # ---------- DEAL BUTTON ----------
         elif is_deal:
             try:
                 href = btn.get_attribute("href")

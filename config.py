@@ -35,3 +35,12 @@ SEEN_CODES_FILE = "data/seen_codes.json"
 # Browser
 HEADLESS = False
 SLOW_MO = 300
+
+# ============================================
+# AI AGENT
+# ============================================
+USE_AI = True
+AI_PROVIDER = "gemini"     # gemini
+AI_API_KEY = ""   # ollama ke liye ""
+AI_MODEL = "gemini-3.1-flash-lite"       # Sabse sasta aur fast model for web scraping
+AI_MAX_STEPS = 3         # har page par max AI decisions
