@@ -1,0 +1,14 @@
+2026/08/23-05:44:39.916 464c Reusing MANIFEST C:\Users\farru\Documents\GitHub\couponScrapper\chrome_profile\Default\IndexedDB\https_www.dyson.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/08/23-05:44:39.917 464c Recovering log #42
+2026/08/23-05:44:39.918 464c Reusing old log C:\Users\farru\Documents\GitHub\couponScrapper\chrome_profile\Default\IndexedDB\https_www.dyson.com_0.indexeddb.leveldb/000042.log 
+2026/08/23-05:44:39.918 464c Delete type=2 #40
+2026/08/23-05:44:40.009 3640 Level-0 table #47: started
+2026/08/23-05:44:40.015 3640 Level-0 table #47: 3337 bytes OK
+2026/08/23-05:44:40.018 3640 Delete type=0 #42
+2026/08/23-05:44:40.019 463c Manual compaction at level-0 from '\x00\x0d\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0e\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0d\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 1677 : 1
+2026/08/23-05:44:40.019 463c Compacting 1@0 + 1@1 files
+2026/08/23-05:44:40.023 463c Generated table #48@0: 215 keys, 3756 bytes
+2026/08/23-05:44:40.023 463c Compacted 1@0 + 1@1 files => 3756 bytes
+2026/08/23-05:44:40.026 463c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:44:40.027 463c Delete type=2 #47
+2026/08/23-05:44:40.028 463c Manual compaction at level-0 from '\x00\x0d\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 1677 : 1 .. '\x00\x0e\x00\x00\x00' @ 0 : 0; will stop at (end)

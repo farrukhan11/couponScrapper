@@ -1,0 +1,747 @@
+function t(t,o,i,e){for(var s,r=arguments.length,n=r<3?o:null===e?e=Object.getOwnPropertyDescriptor(o,i):e,a=t.length-1;a>=0;a--)(s=t[a])&&(n=(r<3?s(n):r>3?s(o,i,n):s(o,i))||n);return r>3&&n&&Object.defineProperty(o,i,n),n}"function"==typeof SuppressedError&&SuppressedError;
+/**
+ * @license
+ * Copyright 2019 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+const o=globalThis,i=o.ShadowRoot&&(void 0===o.ShadyCSS||o.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,e=Symbol(),s=new WeakMap;class r{constructor(t,o,i){if(this._$cssResult$=!0,i!==e)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=t,this.t=o}get styleSheet(){let t=this.o;const o=this.t;if(i&&void 0===t){const i=void 0!==o&&1===o.length;i&&(t=s.get(o)),void 0===t&&((this.o=t=new CSSStyleSheet).replaceSync(this.cssText),i&&s.set(o,t))}return t}toString(){return this.cssText}}const n=(t,...o)=>{const i=1===t.length?t[0]:o.reduce(((o,i,e)=>o+(t=>{if(!0===t._$cssResult$)return t.cssText;if("number"==typeof t)return t;throw Error("Value passed to 'css' function must be a 'css' function result: "+t+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(i)+t[e+1]),t[0]);return new r(i,t,e)},a=i?t=>t:t=>t instanceof CSSStyleSheet?(t=>{let o="";for(const i of t.cssRules)o+=i.cssText;return(t=>new r("string"==typeof t?t:t+"",void 0,e))(o)})(t):t
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */,{is:l,defineProperty:c,getOwnPropertyDescriptor:h,getOwnPropertyNames:p,getOwnPropertySymbols:d,getPrototypeOf:u}=Object,m=globalThis,f=m.trustedTypes,g=f?f.emptyScript:"",b=m.reactiveElementPolyfillSupport,v=(t,o)=>t,y={toAttribute(t,o){switch(o){case Boolean:t=t?g:null;break;case Object:case Array:t=null==t?t:JSON.stringify(t)}return t},fromAttribute(t,o){let i=t;switch(o){case Boolean:i=null!==t;break;case Number:i=null===t?null:Number(t);break;case Object:case Array:try{i=JSON.parse(t)}catch(t){i=null}}return i}},w=(t,o)=>!l(t,o),x={attribute:!0,type:String,converter:y,reflect:!1,hasChanged:w};Symbol.metadata??=Symbol("metadata"),m.litPropertyMetadata??=new WeakMap;class $ extends HTMLElement{static addInitializer(t){this._$Ei(),(this.l??=[]).push(t)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(t,o=x){if(o.state&&(o.attribute=!1),this._$Ei(),this.elementProperties.set(t,o),!o.noAccessor){const i=Symbol(),e=this.getPropertyDescriptor(t,i,o);void 0!==e&&c(this.prototype,t,e)}}static getPropertyDescriptor(t,o,i){const{get:e,set:s}=h(this.prototype,t)??{get(){return this[o]},set(t){this[o]=t}};return{get(){return e?.call(this)},set(o){const r=e?.call(this);s.call(this,o),this.requestUpdate(t,r,i)},configurable:!0,enumerable:!0}}static getPropertyOptions(t){return this.elementProperties.get(t)??x}static _$Ei(){if(this.hasOwnProperty(v("elementProperties")))return;const t=u(this);t.finalize(),void 0!==t.l&&(this.l=[...t.l]),this.elementProperties=new Map(t.elementProperties)}static finalize(){if(this.hasOwnProperty(v("finalized")))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(v("properties"))){const t=this.properties,o=[...p(t),...d(t)];for(const i of o)this.createProperty(i,t[i])}const t=this[Symbol.metadata];if(null!==t){const o=litPropertyMetadata.get(t);if(void 0!==o)for(const[t,i]of o)this.elementProperties.set(t,i)}this._$Eh=new Map;for(const[t,o]of this.elementProperties){const i=this._$Eu(t,o);void 0!==i&&this._$Eh.set(i,t)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(t){const o=[];if(Array.isArray(t)){const i=new Set(t.flat(1/0).reverse());for(const t of i)o.unshift(a(t))}else void 0!==t&&o.push(a(t));return o}static _$Eu(t,o){const i=o.attribute;return!1===i?void 0:"string"==typeof i?i:"string"==typeof t?t.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise((t=>this.enableUpdating=t)),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach((t=>t(this)))}addController(t){(this._$EO??=new Set).add(t),void 0!==this.renderRoot&&this.isConnected&&t.hostConnected?.()}removeController(t){this._$EO?.delete(t)}_$E_(){const t=new Map,o=this.constructor.elementProperties;for(const i of o.keys())this.hasOwnProperty(i)&&(t.set(i,this[i]),delete this[i]);t.size>0&&(this._$Ep=t)}createRenderRoot(){const t=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return((t,e)=>{if(i)t.adoptedStyleSheets=e.map((t=>t instanceof CSSStyleSheet?t:t.styleSheet));else for(const i of e){const e=document.createElement("style"),s=o.litNonce;void 0!==s&&e.setAttribute("nonce",s),e.textContent=i.cssText,t.appendChild(e)}})(t,this.constructor.elementStyles),t}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach((t=>t.hostConnected?.()))}enableUpdating(t){}disconnectedCallback(){this._$EO?.forEach((t=>t.hostDisconnected?.()))}attributeChangedCallback(t,o,i){this._$AK(t,i)}_$EC(t,o){const i=this.constructor.elementProperties.get(t),e=this.constructor._$Eu(t,i);if(void 0!==e&&!0===i.reflect){const s=(void 0!==i.converter?.toAttribute?i.converter:y).toAttribute(o,i.type);this._$Em=t,null==s?this.removeAttribute(e):this.setAttribute(e,s),this._$Em=null}}_$AK(t,o){const i=this.constructor,e=i._$Eh.get(t);if(void 0!==e&&this._$Em!==e){const t=i.getPropertyOptions(e),s="function"==typeof t.converter?{fromAttribute:t.converter}:void 0!==t.converter?.fromAttribute?t.converter:y;this._$Em=e,this[e]=s.fromAttribute(o,t.type),this._$Em=null}}requestUpdate(t,o,i){if(void 0!==t){if(i??=this.constructor.getPropertyOptions(t),!(i.hasChanged??w)(this[t],o))return;this.P(t,o,i)}!1===this.isUpdatePending&&(this._$ES=this._$ET())}P(t,o,i){this._$AL.has(t)||this._$AL.set(t,o),!0===i.reflect&&this._$Em!==t&&(this._$Ej??=new Set).add(t)}async _$ET(){this.isUpdatePending=!0;try{await this._$ES}catch(t){Promise.reject(t)}const t=this.scheduleUpdate();return null!=t&&await t,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[t,o]of this._$Ep)this[t]=o;this._$Ep=void 0}const t=this.constructor.elementProperties;if(t.size>0)for(const[o,i]of t)!0!==i.wrapped||this._$AL.has(o)||void 0===this[o]||this.P(o,this[o],i)}let t=!1;const o=this._$AL;try{t=this.shouldUpdate(o),t?(this.willUpdate(o),this._$EO?.forEach((t=>t.hostUpdate?.())),this.update(o)):this._$EU()}catch(o){throw t=!1,this._$EU(),o}t&&this._$AE(o)}willUpdate(t){}_$AE(t){this._$EO?.forEach((t=>t.hostUpdated?.())),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(t)),this.updated(t)}_$EU(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(t){return!0}update(t){this._$Ej&&=this._$Ej.forEach((t=>this._$EC(t,this[t]))),this._$EU()}updated(t){}firstUpdated(t){}}$.elementStyles=[],$.shadowRootOptions={mode:"open"},$[v("elementProperties")]=new Map,$[v("finalized")]=new Map,b?.({ReactiveElement:$}),(m.reactiveElementVersions??=[]).push("2.0.4");
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+const k=globalThis,_=k.trustedTypes,S=_?_.createPolicy("lit-html",{createHTML:t=>t}):void 0,C="$lit$",z=`lit$${Math.random().toFixed(9).slice(2)}$`,A="?"+z,E=`<${A}>`,U=document,T=()=>U.createComment(""),P=t=>null===t||"object"!=typeof t&&"function"!=typeof t,O=Array.isArray,M="[ \t\n\f\r]",j=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,N=/-->/g,R=/>/g,D=RegExp(`>|${M}(?:([^\\s"'>=/]+)(${M}*=${M}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),I=/'/g,F=/"/g,L=/^(?:script|style|textarea|title)$/i,q=(t=>(o,...i)=>({_$litType$:t,strings:o,values:i}))(1),B=Symbol.for("lit-noChange"),G=Symbol.for("lit-nothing"),V=new WeakMap,W=U.createTreeWalker(U,129);function J(t,o){if(!Array.isArray(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==S?S.createHTML(o):o}const H=(t,o)=>{const i=t.length-1,e=[];let s,r=2===o?"<svg>":"",n=j;for(let o=0;o<i;o++){const i=t[o];let a,l,c=-1,h=0;for(;h<i.length&&(n.lastIndex=h,l=n.exec(i),null!==l);)h=n.lastIndex,n===j?"!--"===l[1]?n=N:void 0!==l[1]?n=R:void 0!==l[2]?(L.test(l[2])&&(s=RegExp("</"+l[2],"g")),n=D):void 0!==l[3]&&(n=D):n===D?">"===l[0]?(n=s??j,c=-1):void 0===l[1]?c=-2:(c=n.lastIndex-l[2].length,a=l[1],n=void 0===l[3]?D:'"'===l[3]?F:I):n===F||n===I?n=D:n===N||n===R?n=j:(n=D,s=void 0);const p=n===D&&t[o+1].startsWith("/>")?" ":"";r+=n===j?i+E:c>=0?(e.push(a),i.slice(0,c)+C+i.slice(c)+z+p):i+z+(-2===c?o:p)}return[J(t,r+(t[i]||"<?>")+(2===o?"</svg>":"")),e]};class Z{constructor({strings:t,_$litType$:o},i){let e;this.parts=[];let s=0,r=0;const n=t.length-1,a=this.parts,[l,c]=H(t,o);if(this.el=Z.createElement(l,i),W.currentNode=this.el.content,2===o){const t=this.el.content.firstChild;t.replaceWith(...t.childNodes)}for(;null!==(e=W.nextNode())&&a.length<n;){if(1===e.nodeType){if(e.hasAttributes())for(const t of e.getAttributeNames())if(t.endsWith(C)){const o=c[r++],i=e.getAttribute(t).split(z),n=/([.?@])?(.*)/.exec(o);a.push({type:1,index:s,name:n[2],strings:i,ctor:"."===n[1]?tt:"?"===n[1]?ot:"@"===n[1]?it:Q}),e.removeAttribute(t)}else t.startsWith(z)&&(a.push({type:6,index:s}),e.removeAttribute(t));if(L.test(e.tagName)){const t=e.textContent.split(z),o=t.length-1;if(o>0){e.textContent=_?_.emptyScript:"";for(let i=0;i<o;i++)e.append(t[i],T()),W.nextNode(),a.push({type:2,index:++s});e.append(t[o],T())}}}else if(8===e.nodeType)if(e.data===A)a.push({type:2,index:s});else{let t=-1;for(;-1!==(t=e.data.indexOf(z,t+1));)a.push({type:7,index:s}),t+=z.length-1}s++}}static createElement(t,o){const i=U.createElement("template");return i.innerHTML=t,i}}function X(t,o,i=t,e){if(o===B)return o;let s=void 0!==e?i._$Co?.[e]:i._$Cl;const r=P(o)?void 0:o._$litDirective$;return s?.constructor!==r&&(s?._$AO?.(!1),void 0===r?s=void 0:(s=new r(t),s._$AT(t,i,e)),void 0!==e?(i._$Co??=[])[e]=s:i._$Cl=s),void 0!==s&&(o=X(t,s._$AS(t,o.values),s,e)),o}class K{constructor(t,o){this._$AV=[],this._$AN=void 0,this._$AD=t,this._$AM=o}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(t){const{el:{content:o},parts:i}=this._$AD,e=(t?.creationScope??U).importNode(o,!0);W.currentNode=e;let s=W.nextNode(),r=0,n=0,a=i[0];for(;void 0!==a;){if(r===a.index){let o;2===a.type?o=new Y(s,s.nextSibling,this,t):1===a.type?o=new a.ctor(s,a.name,a.strings,this,t):6===a.type&&(o=new et(s,this,t)),this._$AV.push(o),a=i[++n]}r!==a?.index&&(s=W.nextNode(),r++)}return W.currentNode=U,e}p(t){let o=0;for(const i of this._$AV)void 0!==i&&(void 0!==i.strings?(i._$AI(t,i,o),o+=i.strings.length-2):i._$AI(t[o])),o++}}class Y{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(t,o,i,e){this.type=2,this._$AH=G,this._$AN=void 0,this._$AA=t,this._$AB=o,this._$AM=i,this.options=e,this._$Cv=e?.isConnected??!0}get parentNode(){let t=this._$AA.parentNode;const o=this._$AM;return void 0!==o&&11===t?.nodeType&&(t=o.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,o=this){t=X(this,t,o),P(t)?t===G||null==t||""===t?(this._$AH!==G&&this._$AR(),this._$AH=G):t!==this._$AH&&t!==B&&this._(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):(t=>O(t)||"function"==typeof t?.[Symbol.iterator])(t)?this.k(t):this._(t)}S(t){return this._$AA.parentNode.insertBefore(t,this._$AB)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.S(t))}_(t){this._$AH!==G&&P(this._$AH)?this._$AA.nextSibling.data=t:this.T(U.createTextNode(t)),this._$AH=t}$(t){const{values:o,_$litType$:i}=t,e="number"==typeof i?this._$AC(t):(void 0===i.el&&(i.el=Z.createElement(J(i.h,i.h[0]),this.options)),i);if(this._$AH?._$AD===e)this._$AH.p(o);else{const t=new K(e,this),i=t.u(this.options);t.p(o),this.T(i),this._$AH=t}}_$AC(t){let o=V.get(t.strings);return void 0===o&&V.set(t.strings,o=new Z(t)),o}k(t){O(this._$AH)||(this._$AH=[],this._$AR());const o=this._$AH;let i,e=0;for(const s of t)e===o.length?o.push(i=new Y(this.S(T()),this.S(T()),this,this.options)):i=o[e],i._$AI(s),e++;e<o.length&&(this._$AR(i&&i._$AB.nextSibling,e),o.length=e)}_$AR(t=this._$AA.nextSibling,o){for(this._$AP?.(!1,!0,o);t&&t!==this._$AB;){const o=t.nextSibling;t.remove(),t=o}}setConnected(t){void 0===this._$AM&&(this._$Cv=t,this._$AP?.(t))}}class Q{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(t,o,i,e,s){this.type=1,this._$AH=G,this._$AN=void 0,this.element=t,this.name=o,this._$AM=e,this.options=s,i.length>2||""!==i[0]||""!==i[1]?(this._$AH=Array(i.length-1).fill(new String),this.strings=i):this._$AH=G}_$AI(t,o=this,i,e){const s=this.strings;let r=!1;if(void 0===s)t=X(this,t,o,0),r=!P(t)||t!==this._$AH&&t!==B,r&&(this._$AH=t);else{const e=t;let n,a;for(t=s[0],n=0;n<s.length-1;n++)a=X(this,e[i+n],o,n),a===B&&(a=this._$AH[n]),r||=!P(a)||a!==this._$AH[n],a===G?t=G:t!==G&&(t+=(a??"")+s[n+1]),this._$AH[n]=a}r&&!e&&this.j(t)}j(t){t===G?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,t??"")}}class tt extends Q{constructor(){super(...arguments),this.type=3}j(t){this.element[this.name]=t===G?void 0:t}}class ot extends Q{constructor(){super(...arguments),this.type=4}j(t){this.element.toggleAttribute(this.name,!!t&&t!==G)}}class it extends Q{constructor(t,o,i,e,s){super(t,o,i,e,s),this.type=5}_$AI(t,o=this){if((t=X(this,t,o,0)??G)===B)return;const i=this._$AH,e=t===G&&i!==G||t.capture!==i.capture||t.once!==i.once||t.passive!==i.passive,s=t!==G&&(i===G||e);e&&this.element.removeEventListener(this.name,this,i),s&&this.element.addEventListener(this.name,this,t),this._$AH=t}handleEvent(t){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,t):this._$AH.handleEvent(t)}}class et{constructor(t,o,i){this.element=t,this.type=6,this._$AN=void 0,this._$AM=o,this.options=i}get _$AU(){return this._$AM._$AU}_$AI(t){X(this,t)}}const st=k.litHtmlPolyfillSupport;st?.(Z,Y),(k.litHtmlVersions??=[]).push("3.1.4");
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+class rt extends ${constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){const t=super.createRenderRoot();return this.renderOptions.renderBefore??=t.firstChild,t}update(t){const o=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=((t,o,i)=>{const e=i?.renderBefore??o;let s=e._$litPart$;if(void 0===s){const t=i?.renderBefore??null;e._$litPart$=s=new Y(o.insertBefore(T(),t),t,void 0,i??{})}return s._$AI(t),s})(o,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return B}}rt._$litElement$=!0,rt.finalized=!0,globalThis.litElementHydrateSupport?.({LitElement:rt});const nt=globalThis.litElementPolyfillSupport;nt?.({LitElement:rt}),(globalThis.litElementVersions??=[]).push("4.0.6");
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+const at=Symbol();class lt{get taskComplete(){return this.t||(1===this.i?this.t=new Promise(((t,o)=>{this.o=t,this.h=o})):3===this.i?this.t=Promise.reject(this.l):this.t=Promise.resolve(this.u)),this.t}constructor(t,o,i){this.p=0,this.i=0,(this._=t).addController(this);const e="object"==typeof o?o:{task:o,args:i};this.v=e.task,this.j=e.args,this.m=e.argsEqual??ct,this.k=e.onComplete,this.A=e.onError,this.autoRun=e.autoRun??!0,"initialValue"in e&&(this.u=e.initialValue,this.i=2,this.O=this.T?.())}hostUpdate(){!0===this.autoRun&&this.S()}hostUpdated(){"afterUpdate"===this.autoRun&&this.S()}T(){if(void 0===this.j)return;const t=this.j();if(!Array.isArray(t))throw Error("The args function must return an array");return t}async S(){const t=this.T(),o=this.O;this.O=t,t===o||void 0===t||void 0!==o&&this.m(o,t)||await this.run(t)}async run(t){let o,i;t??=this.T(),this.O=t,1===this.i?this.q?.abort():(this.t=void 0,this.o=void 0,this.h=void 0),this.i=1,"afterUpdate"===this.autoRun?queueMicrotask((()=>this._.requestUpdate())):this._.requestUpdate();const e=++this.p;this.q=new AbortController;let s=!1;try{o=await this.v(t,{signal:this.q.signal})}catch(t){s=!0,i=t}if(this.p===e){if(o===at)this.i=0;else{if(!1===s){try{this.k?.(o)}catch{}this.i=2,this.o?.(o)}else{try{this.A?.(i)}catch{}this.i=3,this.h?.(i)}this.u=o,this.l=i}this._.requestUpdate()}}abort(t){1===this.i&&this.q?.abort(t)}get value(){return this.u}get error(){return this.l}get status(){return this.i}render(t){switch(this.i){case 0:return t.initial?.();case 1:return t.pending?.();case 2:return t.complete?.(this.value);case 3:return t.error?.(this.error);default:throw Error("Unexpected status: "+this.i)}}}const ct=(t,o)=>t===o||t.length===o.length&&t.every(((t,i)=>!w(t,o[i])))
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */,ht={attribute:!0,type:String,converter:y,reflect:!1,hasChanged:w},pt=(t=ht,o,i)=>{const{kind:e,metadata:s}=i;let r=globalThis.litPropertyMetadata.get(s);if(void 0===r&&globalThis.litPropertyMetadata.set(s,r=new Map),r.set(i.name,t),"accessor"===e){const{name:e}=i;return{set(i){const s=o.get.call(this);o.set.call(this,i),this.requestUpdate(e,s,t)},init(o){return void 0!==o&&this.P(e,void 0,t),o}}}if("setter"===e){const{name:e}=i;return function(i){const s=this[e];o.call(this,i),this.requestUpdate(e,s,t)}}throw Error("Unsupported decorator location: "+e)};function dt(t){return(o,i)=>"object"==typeof i?pt(t,o,i):((t,o,i)=>{const e=o.hasOwnProperty(i);return o.constructor.createProperty(i,e?{...t,wrapped:!0}:t),e?Object.getOwnPropertyDescriptor(o,i):void 0})(t,o,i)
+/**
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */}function ut(t,o,i){return t?o(t):i?.(t)}function mt(t){const o=document.createElement("div");return o.innerHTML=t,o.innerText}function ft(t){return`${t}&embed_landing_page=${encodeURIComponent(window.location.href)}`}function gt(t,o){return q`
+    <div
+      id="promo-coupon-${o.id}"
+      class="promo-coupon-wrapper"
+      data-coupon-id="${o.id}"
+      data-coupon-url="${ft(o.clickout_url)}"
+      data-coupon-type="${o.type}"
+      data-changed-behaviour="${function(t){return Boolean(!t.is_default_clickout&&"offer"===t.type)}(o)?"true":G}"
+      data-href="#id-${o.id}"
+    >
+      <p class="promo-coupon-logo" @click="${t._clickout}">
+        <span class="amount">${mt(o.logo_text.first_line)}</span>
+        <span class="type">${mt(o.logo_text.second_line)}</span>
+      </p>
+
+      <h3 class="promo-coupon-title" @click="${t._clickout}">
+        ${ut(o.info_fields&&o.info_fields.is_exclusive,(()=>q`<span class="label label--exclusive">Exclusive deal - </span>`),(()=>q``))}
+        ${o.title}
+      </h3>
+
+      <div
+        class="clickout promo-coupon-footer">
+        ${ut(o.type&&"offer"===o.type,(()=>q`
+          <span class="promo-coupon-button" @click="${t._clickout}">Get offer</span>
+          `))}
+          ${ut(o.type&&"coupon"===o.type,(()=>q`
+          <span class="promo-coupon-button" @click="${t._clickout}">Get promo code</span>
+          `))}
+      </div>
+    </div>
+  `}
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */const bt=2;
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */class vt{constructor(t){}get _$AU(){return this._$AM._$AU}_$AT(t,o,i){this._$Ct=t,this._$AM=o,this._$Ci=i}_$AS(t,o){return this.update(t,o)}update(t,o){return this.render(...o)}}
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */const yt=(t,o)=>{const i=t._$AN;if(void 0===i)return!1;for(const t of i)t._$AO?.(o,!1),yt(t,o);return!0},wt=t=>{let o,i;do{if(void 0===(o=t._$AM))break;i=o._$AN,i.delete(t),t=o}while(0===i?.size)},xt=t=>{for(let o;o=t._$AM;t=o){let i=o._$AN;if(void 0===i)o._$AN=i=new Set;else if(i.has(t))break;i.add(t),_t(o)}};function $t(t){void 0!==this._$AN?(wt(this),this._$AM=t,xt(this)):this._$AM=t}function kt(t,o=!1,i=0){const e=this._$AH,s=this._$AN;if(void 0!==s&&0!==s.size)if(o)if(Array.isArray(e))for(let t=i;t<e.length;t++)yt(e[t],!1),wt(e[t]);else null!=e&&(yt(e,!1),wt(e));else yt(this,t)}const _t=t=>{t.type==bt&&(t._$AP??=kt,t._$AQ??=$t)};class St extends vt{constructor(){super(...arguments),this._$AN=void 0}_$AT(t,o,i){super._$AT(t,o,i),xt(this),this.isConnected=t._$AU}_$AO(t,o=!0){t!==this.isConnected&&(this.isConnected=t,t?this.reconnected?.():this.disconnected?.()),o&&(yt(this,t),wt(this))}setValue(t){if((t=>void 0===t.strings)(this._$Ct))this._$Ct._$AI(t,this);else{const o=[...this._$Ct._$AH];o[this._$Ci]=t,this._$Ct._$AI(o,this,0)}}disconnected(){}reconnected(){}}
+/**
+ * @license
+ * Copyright 2021 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */class Ct{constructor(t){this.Y=t}disconnect(){this.Y=void 0}reconnect(t){this.Y=t}deref(){return this.Y}}class zt{constructor(){this.Z=void 0,this.q=void 0}get(){return this.Z}pause(){this.Z??=new Promise((t=>this.q=t))}resume(){this.q?.(),this.Z=this.q=void 0}}
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */const At=t=>!(t=>null===t||"object"!=typeof t&&"function"!=typeof t)(t)&&"function"==typeof t.then,Et=1073741823;const Ut=(t=>(...o)=>({_$litDirective$:t,values:o}))(class extends St{constructor(){super(...arguments),this._$Cwt=Et,this._$Cbt=[],this._$CK=new Ct(this),this._$CX=new zt}render(...t){return t.find((t=>!At(t)))??B}update(t,o){const i=this._$Cbt;let e=i.length;this._$Cbt=o;const s=this._$CK,r=this._$CX;this.isConnected||this.disconnected();for(let t=0;t<o.length&&!(t>this._$Cwt);t++){const n=o[t];if(!At(n))return this._$Cwt=t,n;t<e&&n===i[t]||(this._$Cwt=Et,e=0,Promise.resolve(n).then((async t=>{for(;r.get();)await r.get();const o=s.deref();if(void 0!==o){const i=o._$Cbt.indexOf(n);i>-1&&i<o._$Cwt&&(o._$Cwt=i,o.setValue(t))}})))}return B}disconnected(){this._$CK.disconnect(),this._$CX.pause()}reconnected(){this._$CK.reconnect(this),this._$CX.resume()}});function Tt(t,o){const i=new Date(o.last_time_verified),e=new Intl.DateTimeFormat("en-US").format(i);return q`
+    <div class="backdrop" @click="${t._hideModal}"></div>
+    <div class="promo-modal">
+      <div
+        class="promo-modal-dialog"
+        data-coupon-id="${o.id}"
+        data-coupon-url="${ft(o.clickout_url)}"
+        data-href="#id-${o.id}"
+        >
+        <span class="promo-modal-close" @click="${()=>{t._hideModal(),t._scrollToCoupon()}}"></span>
+        <img class="promo-modal-logo" src="${o.logo}" alt="${o.shop_name} logo">
+        ${ut(Boolean(o.last_time_verified),(()=>q`<div class="promo-modal-verified">
+            Verified on ${e}
+          </div>`))}
+        ${ut(o&&o.info_fields?.is_exclusive,(()=>q`
+          <span class="label label--exclusive">Exclusive deal</span>
+        `),(()=>q``))}
+        <div class="promo-modal-title">${o.title}</div>
+        ${ut(o.displayClickedOutState,(()=>q`
+            ${ut("coupon"==o.type&&o.code,(()=>q`
+                <div class="promo-modal-code">${o.code}</div>
+                <button class="promo-modal-copy" @click="${t._copyCode}" data-copied="Copy again">Copy code</button>
+                <span class="promo-modal-small-info">Enter the code during checkout</span>
+                <a class="promo-modal-link" target="_blank" href="${ft(o.clickout_url)}">Use code at ${o.shop_name}</a>
+              `),(()=>q`
+                <div class="promo-modal-code promo-modal-code--no-code">No code needed</div>
+                <span class="promo-modal-small-info">Go to shop to see the deal</span>
+                <a class="promo-modal-link promo-modal-link--no-code" href="${ft(o.clickout_url)}" target="_blank">Open at ${o.shop_name}</a>
+              `))}
+          `),(()=>q`
+            <div class="promo-modal-code promo-modal-code--blurred"><span>xxxx-xxxx</span></div>
+            <button class="promo-modal-copy" @click="${t._clickout}" >Reveal code</button>
+            <span class="promo-modal-small-info">Enter the code during checkout</span>
+            <a class="promo-modal-link" target="_blank" href="${ft(o.clickout_url)}">Use code at ${o.shop_name}</a>
+          `))}
+        ${ut(o.description||o.info_fields&&(o.info_fields.info_conditions||o.info_fields.info_discount),(()=>q`
+          <span class="promo-modal-show-more" @click="${t._toggle}" data-more-text="Terms" data-less-text="Close Terms">Terms</span>`))}
+        <div class="promo-modal-info">
+          <div class="promo-coupon-table">
+            ${ut(o.info_fields&&o.info_fields.info_conditions,(()=>q`
+                <span class="key">Terms and conditions</span>
+                <span class="value">${o.info_fields.info_conditions}</span>
+              `))}
+            ${ut(o.info_fields&&o.info_fields.info_discount,(()=>q`
+                <span class="key">Price reduction:</span>
+                <span class="value">${o.info_fields.info_discount}</span>
+              `))}
+          </div>
+          <div class="promo-modal-description">
+            ${mt(o.description)}
+          </div>
+        </div>
+      </div>
+    </div>
+  `}var Pt=n`
+
+  :host {
+    width: 100%;
+    display: block;
+
+    --utility-color-black: #000;
+    --utility-color-charcoal: #363432;
+    --utility-color-white: #FFF;
+    --utility-color-mercury: #E6E6E6;
+    --utility-color-alabaster: #FBFBFB;
+    --utility-color-dove: #666;
+    --utility-color-mine-shaft: #333;
+    --utility-color-aquamarine: #1B7895;
+    --utility-color-astral: #087DA1;
+    --utility-font-benton-gothic: "BentonGothic";
+    --utility-font-benton-gothic-condensed-black: "BentonGothicCond-Black";
+    --utility-font-proxima-nova: "Proxima Nova";
+  }
+
+  .promo-coupon-container__header {
+    margin: 10px 0 0;
+    container-type: inline-size;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+
+    h2 {
+      margin: 0 15px 0 0;
+      font-family: var(--utility-font-proxima-nova);
+      font-size: 1.375rem;
+      font-weight: 700;
+      letter-spacing: 0.09px;
+      line-height: 2rem;
+      color: var(--utility-color-black);
+    }
+
+    p {
+      margin: 0;
+      font-family: var(--utility-font-benton-gothic);
+      font-size: 14px;
+      color: var(--utility-color-charcoal);
+    }
+  }
+
+  .promo-coupon-container {
+    container-type: inline-size;
+    margin: 0 auto 28px;
+    color: var(--utility-color-black);
+    font-family: var(--utility-font-benton-gothic);
+    line-height: 1.2;
+    text-align: left;
+  }
+
+  .promo-coupon-wrapper {
+    display: grid;
+    grid-template-areas:
+      "logo title footer";
+    grid-column-gap: 10px;
+    grid-template-columns: 160px auto 185px;
+    padding: 5px 0;
+    background-color: var(--utility-color-white);
+    border-top: 2px solid var(--utility-color-black);
+    box-sizing: border-box;
+  }
+
+  .promo-coupon-wrapper:last-child {
+    border-bottom: 2px solid var(--utility-color-black);
+  }
+
+  .label--exclusive {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--utility-color-aquamarine);
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .promo-coupon-logo {
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    grid-area: logo;
+    margin: 0;
+    font-weight: 400;
+    font-size: 20px;
+    font-family: var(--utility-font-benton-gothic-condensed-black);
+    text-transform: uppercase;
+    cursor: pointer;
+    background-color: rgba(27, 120, 149, 0.2);
+    padding: 10px 5px;
+    align-self: stretch;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .promo-coupon-logo .amount,
+  .promo-coupon-logo .type {
+    display: inline-block;
+    width: 100%;
+    text-align: center;
+  }
+
+  .promo-coupon-title {
+    display: -webkit-box;
+    grid-area: title;
+    align-self: center;
+    margin: 0;
+    font-weight: 500;
+    font-size: 18px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    cursor: pointer;
+  }
+
+  .promo-coupon-footer {
+    grid-area: footer;
+    align-self: center;
+  }
+
+  .promo-coupon-button,
+  .promo-modal-copy {
+    padding: 10px;
+    color: var(--utility-color-white);
+    font-weight: 700;
+    font-size: 14px;
+    font-family: var(--utility-font-benton-gothic);
+    background-color: var(--utility-color-aquamarine);
+    border: 2px solid var(--utility-color-aquamarine);
+    cursor: pointer;
+  }
+
+  .promo-coupon-button {
+    position: relative;
+    display: block;
+    text-align: center;
+  }
+
+  .promo-coupon-button:hover,
+  .promo-modal-copy:hover {
+    color: var(--utility-color-aquamarine);
+    background-color: var(--utility-color-white);
+    transition: 0.2s ease;
+  }
+
+  .promo-coupon-wrapper--highlighted[data-coupon-type="coupon"] .promo-coupon-button::after,
+  .promo-coupon-wrapper--highlighted[data-coupon-type="offer"] .promo-coupon-button::after {
+    content: "Open again";
+  }
+
+  .promo-coupon-wrapper--highlighted .promo-coupon-button {
+    background-color: var(--utility-color-white);
+    border-style: dashed;
+  }
+
+  .promo-coupon-wrapper--highlighted .promo-coupon-button::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 10px 0;
+    color: var(--utility-color-aquamarine);
+    background-color: var(--utility-color-white);
+  }
+
+  .promo-coupon-wrapper--highlighted .promo-coupon-button:hover::after {
+    color: var(--utility-color-white);
+    background-color: var(--utility-color-aquamarine);
+    transition: 0.3s ease;
+  }
+
+  .promo-coupon-description {
+    display: none;
+    grid-area: description;
+    margin: 8px 0 0;
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .promo-coupon-wrapper--expanded .promo-coupon-description {
+    display: block;
+  }
+
+  .promo-coupon-description p {
+    margin: 0;
+  }
+
+  .promo-coupon-table {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+
+  .key {
+    width: fit-content;
+  }
+
+  .backdrop {
+    background-color: rgba(0, 0, 0, .4);
+    inset: 0;
+    position: fixed;
+    z-index: 1040;
+    cursor: pointer;
+  }
+
+  .promo-modal {
+    bottom: 0;
+    left: 0;
+    outline: 0;
+    overflow: scroll;
+    pointer-events: none;
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 1050;
+  }
+
+  .promo-modal-dialog {
+    margin: 0 auto;
+    top: 50%;
+    transform: translateY(-50%);
+    position: relative;
+    display: grid;
+    grid-template:
+      "logo exclusive"
+      "logo verified"
+      "logo title" 1fr
+      "code code"
+      "copy copy"
+      "small-info small-info"
+      "link link"
+      "show-more show-more"
+      "info info" auto / 94px auto;
+    align-items: center;
+    max-width: 450px;
+    margin: 0 auto;
+    padding: 60px 30px 20px;
+    color: var(--utility-color-black);
+    font-family: var(--utility-font-benton-gothic);
+    line-height: 1.2;
+    background: var(--utility-color-white);
+    border: 1px solid var(--utility-color-mercury);
+    border-top: 2px solid var(--utility-color-black);
+    pointer-events: auto;
+    box-sizing: border-box;
+    text-align: left;
+  }
+
+  .promo-modal-close {
+    position: absolute;
+    top: 8px;
+    right: 20px;
+    width: 16px;
+    height: 16px;
+    padding: 10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none'%3E%3Cpath fill='%23666' d='M.447.447a1.528 1.528 0 0 1 2.16 0L8.01 5.85 13.411.447a1.528 1.528 0 0 1 2.16 2.16L10.17 8.01l5.402 5.402a1.528 1.528 0 0 1-2.16 2.16L8.009 10.17l-5.402 5.402a1.528 1.528 0 0 1-2.16-2.16L5.85 8.009.447 2.607a1.528 1.528 0 0 1 0-2.16Z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    cursor: pointer;
+  }
+
+  .promo-modal-logo {
+    grid-area: logo;
+    width: 70px;
+    height: 70px;
+    border: 1px solid var(--utility-color-mercury);
+  }
+
+  .promo-modal-dialog .label--exclusive {
+    grid-area: exclusive;
+    cursor: auto;
+  }
+
+  .promo-modal-verified {
+    grid-area: verified;
+    margin: 2px 0 8px;
+    color: var(--utility-color-mine-shaft);
+    font-weight: 400;
+    font-size: 14px;
+  }
+
+  .promo-modal-title {
+    grid-area: title;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .promo-modal-code {
+    display: -webkit-box;
+    grid-area: code;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    max-height: 37px;
+    margin-top: 24px;
+    padding: 10px;
+    color: var(--utility-color-astral);
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+    text-transform: uppercase;
+    background-color: var(--utility-color-alabaster);
+    border: 1px solid var(--utility-color-mercury);
+    box-sizing: border-box;
+  }
+
+  .promo-modal-code--blurred span {
+    filter: blur(6px);
+  }
+
+  .promo-modal-copy {
+    grid-area: copy;
+    height: 37px;
+    margin-top: 8px;
+    appearance: none;
+  }
+
+  .promo-modal-copy--copied {
+    color: var(--utility-color-aquamarine);
+    background-color: var(--utility-color-white);
+    border-style: dashed;
+  }
+
+  .promo-modal-small-info {
+    grid-area: small-info;
+    margin-top: 8px;
+    color: var(--utility-color-mine-shaft);
+    font-weight: 400;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .promo-modal-link {
+    grid-area: link;
+    margin: 24px auto 0;
+    color: var(--utility-color-astral);
+    font-weight: 500;
+    font-size: 14px;
+    text-transform: capitalize;
+    text-decoration: underline;
+    text-align: center;
+  }
+
+  .promo-modal-link:hover {
+    text-decoration: none;
+  }
+
+  .promo-modal-show-more {
+    grid-area: show-more;
+    align-self: flex-start;
+    margin-top: 24px;
+    color: var(--utility-color-dove);
+    font-weight: 500;
+    font-size: 14px;
+    text-align: left;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .promo-modal-show-more:hover {
+    text-decoration: none;
+  }
+
+  .promo-modal-info {
+    grid-area: info;
+    display: none;
+    margin-top: 12px;
+  }
+
+  .promo-modal-description {
+    color: var(--utility-color-black);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .promo-modal-dialog--expanded .promo-modal-info {
+    display: block;
+  }
+
+  .promo-modal-info .promo-coupon-table {
+    font-size: 12px;
+  }
+
+  @media (max-width: 500px) {
+    .promo-modal-dialog {
+      grid-template-columns: 82px auto;
+    }
+
+    .promo-modal-verified {
+      margin-top: 5px;
+    }
+  }
+
+  @container (max-width: 670px) {
+    .promo-coupon-container__header {
+      margin: 20px 0 0;
+      padding: 0 0 10px;
+      flex-wrap: wrap;
+    }
+
+    .promo-coupon-wrapper {
+      grid-template-areas:
+        "logo title"
+        "footer footer";
+      grid-template-columns: 110px 1fr;
+      grid-column-gap: 8px;
+      grid-row-gap: 8px;
+      padding: 12px 0;
+    }
+
+    .promo-coupon-logo {
+      font-size: 16px;
+    }
+
+    .promo-coupon-title {
+      margin: 5px 0 10px;
+    }
+  }
+
+`;var Ot=n`
+  body .published-date.with-update-date {
+    display: none;
+  }
+
+  @media (min-width: 769px) {
+    body .page-wrapper {
+      margin-top: 10px;
+    }
+
+    body .headline {
+      margin-bottom: 0;
+    }
+
+    body .byline-enhanced .authors {
+      margin-bottom: 10px;
+    }
+
+    body .page-actions {
+      display: none;
+    }
+
+    body [data-element='story-summary'] {
+      margin-bottom: 0;
+    }
+
+    body .enhancement {
+      margin-top: 0;
+    }
+  }
+
+  @media (max-width: 768px) {
+    body .sponsored-banner-body {
+      height: 30px;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+
+      body .google-dfp-ad-wrapper {
+        display: none !important;
+      }
+      overflow: hidden;
+    }
+
+    body .sponsored-banner-body--active {
+      height: auto;
+      -webkit-line-clamp: unset;
+    }
+
+    body .page-banner.relative.z-10 {
+      display: none;
+    }
+
+    body .page-content {
+      padding-top: 0;
+    }
+
+    body .breadcrumbs a {
+      margin-bottom: 0;
+    }
+
+    .body .page-wrapper {
+      margin-top: 0;
+    }
+
+    body .byline-enhanced .authors {
+      margin-bottom: 10px;
+    }
+
+    body .byline {
+      margin-bottom: 0;
+    }
+
+    body .page-actions {
+      display: none;
+    }
+
+    body .enhancement {
+      margin-top: 0;
+    }
+
+    body [data-element='story-summary'] {
+      margin-bottom: -10px;
+    }
+  }
+
+  body .google-dfp-ad-wrapper {
+    display: none !important;
+  }
+`;let Mt=class extends rt{constructor(){super(),this.maxWidth="784px",this.campaign=!1,this._couponTask=new lt(this,{task:async([t,o,i,e,s],{signal:r})=>{if(t||(t="samsung"),i||(i=5),e)return new Promise(((t,o)=>{t(JSON.parse(e))}));let n=`${this.API_ADDR}/embed/shops/${t}/coupons?limit=${i}`;o&&"false"!==o&&(n=`${this.API_ADDR}/embed/campaigns/${t}/coupons?limit=${i}`);const a=await fetch(n,{headers:{Accept:"application/json",Authorization:`Bearer ${this.BEARER}`,"X-SU-Referrer-Url":window.location.href,"X-SU-Mod-Id":s?String(s):""}});if(a.ok)return a.json();console.log(`Error ${a.status} for ${t}`)},args:()=>[this.slug,this.campaign,this.limit,this.json,this.identifier]}),this.showModal=this._showModal(),this.isProduction=!1,this.API_ADDR="http://localhost/api/v1",this.BEARER="7eb1b5564bc246709aabac0d77becb79",this.isProduction=!0,this.isProduction&&(this.API_ADDR="https://www.latimes.com/coupon-unit/api/v1",this.BEARER="7eb1b5564bc246709aabac0d77becb79"),this.resizeEventHandler()}resizeEventHandler(){var t,o,i;t="resize",o="optimizedResize",i=!1,window.addEventListener(t,(function(){i||(i=!0,requestAnimationFrame((function(){window.dispatchEvent(new CustomEvent(o)),i=!1})))})),window.addEventListener("optimizedResize",(()=>{this._setAutoSize()}))}async _getCode(t,o){const i=`${this.API_ADDR}/embed/coupons/${t}/code`,e=await fetch(i,{headers:{Accept:"application/json",Authorization:`Bearer ${this.BEARER}`,"Unique-Coupon-Modal":String(o)}});if(!e.ok)throw new Error(String(e.status));return e.json().then((t=>t.code))}_hackLATimes(){const t=document.querySelector(".sponsored-banner-body");if(null===document.getElementById("latimes-coupons-overrides")){const t=document.createElement("style");t.id="latimes-coupons-overrides",t.textContent=Ot.cssText,document.head.appendChild(t)}t&&"true"!==t.dataset.active&&(t.dataset.active="true",t.addEventListener("click",(()=>{t.classList.toggle("sponsored-banner-body--active")})))}render(){return this._setAutoSize(),this._hackLATimes(),this._couponTask.render({pending:()=>q`
+        <div class="promo-coupon-container"
+             style="max-width: ${this.maxWidth?this.maxWidth:"auto"};margin-left:${this.marginLeft}">
+          <div class="skeleton promo-coupon-container__header">
+            <h2>Lorem ipsum Promo code</h2>
+            <p>Lorem ipsum dolor sit amet consectetur</p>
+          </div>
+          ${function(t){const o={id:12345678,is_verified:!0,last_time_verified:"2024-06-25T10:43:09.750+01:00",shop_id:"",shop_name:"",is_default_clickout:!0,title:"Lorem ipsum dolor sit amet, consectetur adipisicing elit",description:"<p></p>",savings:"",type:"coupon",code:"",use_uniq_codes:!1,info_fields:{info_discount:"",is_exclusive:!1},widget_header_image:null,logo:"",logo_text:{first_line:"100",second_line:"CODE"},clickout_url:"",start_date:"2024-06-25T00:00:00+01:00",end_date:"2025-02-05T23:59:59+00:00"},i=[];for(let e=0,s=t;e<s;e++)i.push(q`${gt({},o)}`);return q`
+    <style>
+      @keyframes loading {
+        to {
+          transform: translate(100%)
+        }
+      }
+
+      .skeleton {
+        pointer-events: none;
+        width: 100%;
+      }
+
+      .skeleton.promo-coupon-container__header h2,
+      .skeleton.promo-coupon-container__header p,
+      .skeleton .promo-coupon-button,
+      .skeleton .promo-coupon-title,
+      .skeleton .promo-coupon-logo {
+        background: #eee !important;
+        color: #eee !important;
+        border-radius: 5px;
+        position: relative;
+        overflow: hidden;
+        border-color: transparent !important;
+        z-index: 1;
+      }
+
+      .skeleton.promo-coupon-container__header h2::before,
+      .skeleton.promo-coupon-container__header p::before,
+      .skeleton .promo-coupon-button::before,
+      .skeleton .promo-coupon-title::before,
+      .skeleton .promo-coupon-logo::before {
+        content: "";
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        animation: loading 1.5s infinite;
+        background: linear-gradient(90deg, rgba(33, 33, 33, 0), rgba(33, 33, 33, .3), rgba(33, 33, 33, 0));
+        transform: translate(-100%);
+        z-index: 1
+      }
+
+    </style>
+    <div class="skeleton">
+      ${i}
+    </div>
+  `}(this.limit)}
+        </div>`,complete:t=>q`
+        ${ut(t,(()=>q`
+            ${ut(!!this.showModal,(()=>{const o=parseInt(window.location.hash.split("#id-")[1]),i=t.coupons.find((t=>t.id===o));if(i){if(document.body.style.overflow="hidden",this._hasTriggeredClickout(o)){if("coupon"==i?.type){const t=this._getCode(o,i?.use_uniq_codes??!1);return q`
+                    ${Ut(t.then((t=>{const o=t;i.code=o;const e=Tt(this,{...i,displayClickedOutState:!0});return q`${e}`})))}`}{const t=Tt(this,{...i,displayClickedOutState:!0});return q`${t}`}}{const t=Tt(this,{...i,displayClickedOutState:!1});return q`${t}`}}}))}
+
+            <div class="promo-coupon-container"
+              style="max-width: ${this.maxWidth?this.maxWidth:"auto"};margin-left:${this.marginLeft}">
+
+              <div class="promo-coupon-container__header">
+                <h2>
+                  ${ut(t.coupons_section_title,(()=>q`${t.coupons_section_title}`),(()=>q`${t.name} Promo Code`))}
+                </h2>
+                ${ut(t.coupon_last_updated_at,(()=>{return q`
+                    ${this._renderStructuredData(t)}
+                    <p>Coupons Updated on <time datetime="${t.coupon_last_updated_at}">${o=new Date(t.coupon_last_updated_at),o&&!isNaN(o.getTime())?new Intl.DateTimeFormat("en-US",{year:"numeric",month:"short",day:"numeric"}).format(o):""}</time></p>`;var o}),(()=>q``))}
+              </div>
+
+              ${ut(t.coupons,(()=>t.coupons.map((t=>q`${gt(this,{...t})}`))),(()=>q`No Coupons`))}
+            </div>
+          `),(()=>q``))}
+      `,error:t=>q`<p>Error: ${t}</p>`})}_showModal(){return!!window.location.hash.startsWith("#id-")}_toggle(t){const o=t.target.closest(".promo-coupon-wrapper, .promo-modal-dialog");if(!o)return;const i=o.querySelector(".promo-modal-show-more"),e=o.classList[0];o.classList.toggle(`${e}--expanded`),i.innerText=o.classList.contains(`${e}--expanded`)?i.dataset.lessText:i.dataset.moreText}_clickout(t){const o=t.target.closest(".promo-coupon-wrapper")||t.target.closest(".promo-modal-dialog");if(!o)return;localStorage.setItem(`couponID#${o.dataset.couponId}`,`${Date.now()}`);const i=o.dataset.couponUrl,e=o.dataset.href,s=new URL(window.location.toString());s.hash="";const r=o.dataset.changedBehaviour,n=r?i:s.href+e,a=r?e:i;n&&window.open(n),location.href=a||"",r&&window.location.reload()}_hideModal(){this.showModal=!1,document.body.style.overflow=""}_setAutoSize(){let t=document.querySelector(this.alignwith);this.alignwith||(t=document.querySelector(".page-main-content")),t&&(this.marginLeft=t.getBoundingClientRect().left+"px",this.maxWidth=t.getBoundingClientRect().width+"px")}_copyCode(t){const o=t.target,i=o.closest(".promo-modal").querySelector(".promo-modal-code");navigator.clipboard.writeText(i.innerText).then((()=>{o.classList.add("promo-modal-copy--copied"),o.innerText=o.dataset.copied,i.classList.add("promo-modal-code--copied")}),(()=>{console.error("Failed to copy")}))}_scrollToCoupon(){const t=window.location.hash?.split("-"),o="#id"===t[0]?t[1]:"",i=this.shadowRoot?.getElementById(`promo-coupon-${o}`)||this.shadowRoot?.querySelector(`[data-coupon-id="${o}"]`),e=window.scrollY||0;i&&(i.classList.add(`${i.classList[0]||"coupon"}--highlighted`),window.scrollTo({top:i.getBoundingClientRect().top+window.scrollY-e,behavior:"smooth"}))}_renderStructuredData(t){const o=function(t,o=!1){if(!t||!t.name)return null;const i={"@context":"https://schema.org","@type":"WebPageElement",name:`${t.name} ${o?"Promo Codes":"Promo Code"}`,dateModified:t.coupon_last_updated_at,publisher:{"@type":"Organization",name:"Los Angeles Times",logo:{"@type":"ImageObject",url:"https://ca-times.brightspotcdn.com/dims4/default/954b438/2147483647/strip/false/crop/382x60+0+0/resize/382x60!/quality/75/?url=https%3A%2F%2Fcalifornia-times-brightspot.s3.amazonaws.com%2Fde%2F5f%2F46c2d05b430cbc6e775301df1062%2Flogo-full-black.png",width:"382",height:"60"},url:"https://www.latimes.com"},offers:[]};return t.coupons&&Array.isArray(t.coupons)&&(i.offers=t.coupons.map((t=>({"@type":"Offer",category:["Coupon","Voucher","Promo Code"],name:t.title,image:t.logo,validFrom:t.start_date,validThrough:t.end_date})))),i}(t,this.campaign);if(!o)return;const i=JSON.stringify(o,null,2);let e=document.getElementById("coupons-structured-data");e?e.textContent=i:(e=document.createElement("script"),e.id="coupons-structured-data",e.type="application/ld+json",e.textContent=i,document.head.appendChild(e))}_hasTriggeredClickout(t){const o=localStorage.getItem(`couponID#${t}`);if(!o)return!1;const i=Number(o);if(!Number.isFinite(i))return localStorage.removeItem(`couponID#${t}`),!1;return!((Date.now()-i)/1e3>=600)||(localStorage.removeItem(`couponID#${t}`),!1)}};Mt.styles=Pt,t([dt({type:String})],Mt.prototype,"marginLeft",void 0),t([dt({type:String,attribute:"max-width",reflect:!0})],Mt.prototype,"maxWidth",void 0),t([dt({type:String,attribute:"campaign"})],Mt.prototype,"campaign",void 0),t([dt({type:String,attribute:"slug"})],Mt.prototype,"slug",void 0),t([dt({type:String,attribute:"limit"})],Mt.prototype,"limit",void 0),t([dt({type:String,attribute:"alignwith"})],Mt.prototype,"alignwith",void 0),t([dt({type:String,attribute:"json"})],Mt.prototype,"json",void 0),t([dt({type:String,attribute:"identifier"})],Mt.prototype,"identifier",void 0),t([dt()],Mt.prototype,"showModal",void 0),t([dt()],Mt.prototype,"isProduction",void 0),t([dt()],Mt.prototype,"API_ADDR",void 0),t([dt()],Mt.prototype,"BEARER",void 0),Mt=t([(t=>(o,i)=>{void 0!==i?i.addInitializer((()=>{customElements.define(t,o)})):customElements.define(t,o)})
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */("latimes-coupons")],Mt);export{Mt as LatimesCoupons};

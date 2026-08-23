@@ -1,0 +1,87 @@
+2026/08/23-05:32:18.575 366c Reusing MANIFEST C:\Users\farru\Documents\GitHub\couponScrapper\chrome_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/08/23-05:32:18.600 366c Recovering log #89
+2026/08/23-05:32:18.604 366c Reusing old log C:\Users\farru\Documents\GitHub\couponScrapper\chrome_profile\Default\Local Storage\leveldb/000089.log 
+2026/08/23-05:33:18.622 b4c Level-0 table #93: started
+2026/08/23-05:33:18.637 b4c Level-0 table #93: 48698 bytes OK
+2026/08/23-05:33:18.642 b4c Delete type=0 #89
+2026/08/23-05:33:18.643 b4c Compacting 4@0 + 1@1 files
+2026/08/23-05:33:18.661 b4c Generated table #94@0: 424 keys, 221513 bytes
+2026/08/23-05:33:18.662 b4c Compacted 4@0 + 1@1 files => 221513 bytes
+2026/08/23-05:33:18.664 b4c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:33:18.666 b4c Delete type=2 #84
+2026/08/23-05:33:18.666 b4c Delete type=2 #86
+2026/08/23-05:33:18.666 b4c Delete type=2 #88
+2026/08/23-05:33:18.666 b4c Delete type=2 #90
+2026/08/23-05:33:18.666 b4c Delete type=2 #93
+2026/08/23-05:36:02.627 b4c Level-0 table #96: started
+2026/08/23-05:36:02.635 b4c Level-0 table #96: 40448 bytes OK
+2026/08/23-05:36:02.639 b4c Delete type=0 #92
+2026/08/23-05:36:51.235 b4c Level-0 table #98: started
+2026/08/23-05:36:51.243 b4c Level-0 table #98: 72187 bytes OK
+2026/08/23-05:36:51.247 b4c Delete type=0 #95
+2026/08/23-05:37:22.591 b4c Level-0 table #100: started
+2026/08/23-05:37:22.599 b4c Level-0 table #100: 24909 bytes OK
+2026/08/23-05:37:22.604 b4c Delete type=0 #97
+2026/08/23-05:39:25.291 b4c Level-0 table #102: started
+2026/08/23-05:39:25.300 b4c Level-0 table #102: 61714 bytes OK
+2026/08/23-05:39:25.305 b4c Delete type=0 #99
+2026/08/23-05:39:25.305 b4c Compacting 4@0 + 1@1 files
+2026/08/23-05:39:25.320 b4c Generated table #103@0: 427 keys, 218959 bytes
+2026/08/23-05:39:25.320 b4c Compacted 4@0 + 1@1 files => 218959 bytes
+2026/08/23-05:39:25.323 b4c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:39:25.325 b4c Delete type=2 #94
+2026/08/23-05:39:25.325 b4c Delete type=2 #96
+2026/08/23-05:39:25.325 b4c Delete type=2 #98
+2026/08/23-05:39:25.325 b4c Delete type=2 #100
+2026/08/23-05:39:25.325 b4c Delete type=2 #102
+2026/08/23-05:40:34.074 b4c Level-0 table #105: started
+2026/08/23-05:40:34.083 b4c Level-0 table #105: 56923 bytes OK
+2026/08/23-05:40:34.088 b4c Delete type=0 #101
+2026/08/23-05:41:40.500 b4c Level-0 table #107: started
+2026/08/23-05:41:40.507 b4c Level-0 table #107: 59896 bytes OK
+2026/08/23-05:41:40.509 b4c Delete type=0 #104
+2026/08/23-05:42:12.368 b4c Level-0 table #109: started
+2026/08/23-05:42:12.384 b4c Level-0 table #109: 60627 bytes OK
+2026/08/23-05:42:12.389 b4c Delete type=0 #106
+2026/08/23-05:45:07.498 b4c Level-0 table #111: started
+2026/08/23-05:45:07.507 b4c Level-0 table #111: 47006 bytes OK
+2026/08/23-05:45:07.511 b4c Delete type=0 #108
+2026/08/23-05:45:07.512 b4c Compacting 4@0 + 1@1 files
+2026/08/23-05:45:07.526 b4c Generated table #112@0: 447 keys, 221288 bytes
+2026/08/23-05:45:07.526 b4c Compacted 4@0 + 1@1 files => 221288 bytes
+2026/08/23-05:45:07.529 b4c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:45:07.530 b4c Delete type=2 #103
+2026/08/23-05:45:07.531 b4c Delete type=2 #105
+2026/08/23-05:45:07.531 b4c Delete type=2 #107
+2026/08/23-05:45:07.531 b4c Delete type=2 #109
+2026/08/23-05:45:07.531 b4c Delete type=2 #111
+2026/08/23-05:45:51.544 b4c Level-0 table #114: started
+2026/08/23-05:45:51.553 b4c Level-0 table #114: 69903 bytes OK
+2026/08/23-05:45:51.557 b4c Delete type=0 #110
+2026/08/23-05:46:07.769 b4c Level-0 table #116: started
+2026/08/23-05:46:07.777 b4c Level-0 table #116: 29695 bytes OK
+2026/08/23-05:46:07.781 b4c Delete type=0 #113
+2026/08/23-05:46:29.354 366c Level-0 table #118: started
+2026/08/23-05:46:29.361 366c Level-0 table #118: 16976 bytes OK
+2026/08/23-05:46:29.368 366c Delete type=0 #115
+2026/08/23-05:47:02.442 b4c Level-0 table #120: started
+2026/08/23-05:47:02.457 b4c Level-0 table #120: 21388 bytes OK
+2026/08/23-05:47:02.461 b4c Delete type=0 #117
+2026/08/23-05:47:02.461 b4c Compacting 4@0 + 1@1 files
+2026/08/23-05:47:02.474 b4c Generated table #121@0: 447 keys, 204794 bytes
+2026/08/23-05:47:02.475 b4c Compacted 4@0 + 1@1 files => 204794 bytes
+2026/08/23-05:47:02.478 b4c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:47:02.479 b4c Delete type=2 #112
+2026/08/23-05:47:02.479 b4c Delete type=2 #114
+2026/08/23-05:47:02.479 b4c Delete type=2 #116
+2026/08/23-05:47:02.479 b4c Delete type=2 #118
+2026/08/23-05:47:02.479 b4c Delete type=2 #120
+2026/08/23-05:47:23.467 b4c Level-0 table #123: started
+2026/08/23-05:47:23.520 b4c Level-0 table #123: 16749 bytes OK
+2026/08/23-05:47:23.557 b4c Delete type=0 #119
+2026/08/23-05:47:52.120 b4c Level-0 table #125: started
+2026/08/23-05:47:52.226 b4c Level-0 table #125: 34485 bytes OK
+2026/08/23-05:47:52.232 b4c Delete type=0 #122
+2026/08/23-05:48:49.193 b4c Level-0 table #127: started
+2026/08/23-05:48:49.201 b4c Level-0 table #127: 32724 bytes OK
+2026/08/23-05:48:49.205 b4c Delete type=0 #124

@@ -1,0 +1,51 @@
+2026/08/23-05:18:25.470 358c Reusing MANIFEST C:\Users\farru\Documents\GitHub\couponScrapper\chrome_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/08/23-05:18:25.586 358c Recovering log #66
+2026/08/23-05:18:25.598 358c Reusing old log C:\Users\farru\Documents\GitHub\couponScrapper\chrome_profile\Default\Local Storage\leveldb/000066.log 
+2026/08/23-05:20:31.973 38b8 Level-0 table #70: started
+2026/08/23-05:20:31.986 38b8 Level-0 table #70: 46428 bytes OK
+2026/08/23-05:20:31.989 38b8 Delete type=0 #66
+2026/08/23-05:22:53.163 358c Level-0 table #72: started
+2026/08/23-05:22:57.615 358c Level-0 table #72: 48463 bytes OK
+2026/08/23-05:22:57.679 358c Delete type=0 #69
+2026/08/23-05:24:13.837 38b8 Level-0 table #74: started
+2026/08/23-05:24:13.984 38b8 Level-0 table #74: 34858 bytes OK
+2026/08/23-05:24:14.052 38b8 Delete type=0 #71
+2026/08/23-05:24:14.072 38b8 Compacting 4@0 + 1@1 files
+2026/08/23-05:24:14.327 38b8 Generated table #75@0: 359 keys, 198341 bytes
+2026/08/23-05:24:14.327 38b8 Compacted 4@0 + 1@1 files => 198341 bytes
+2026/08/23-05:24:14.331 38b8 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:24:14.333 38b8 Delete type=2 #65
+2026/08/23-05:24:14.333 38b8 Delete type=2 #67
+2026/08/23-05:24:14.333 38b8 Delete type=2 #70
+2026/08/23-05:24:14.333 38b8 Delete type=2 #72
+2026/08/23-05:24:14.333 38b8 Delete type=2 #74
+2026/08/23-05:25:01.580 38b8 Level-0 table #77: started
+2026/08/23-05:25:01.599 38b8 Level-0 table #77: 60152 bytes OK
+2026/08/23-05:25:01.605 38b8 Delete type=0 #73
+2026/08/23-05:25:14.218 38b8 Level-0 table #79: started
+2026/08/23-05:25:14.232 38b8 Level-0 table #79: 54372 bytes OK
+2026/08/23-05:25:14.237 38b8 Delete type=0 #76
+2026/08/23-05:26:42.534 38b8 Level-0 table #81: started
+2026/08/23-05:26:42.544 38b8 Level-0 table #81: 56743 bytes OK
+2026/08/23-05:26:42.548 38b8 Delete type=0 #78
+2026/08/23-05:27:10.131 38b8 Level-0 table #83: started
+2026/08/23-05:27:10.142 38b8 Level-0 table #83: 47180 bytes OK
+2026/08/23-05:27:10.146 38b8 Delete type=0 #80
+2026/08/23-05:27:10.147 38b8 Compacting 4@0 + 1@1 files
+2026/08/23-05:27:10.161 38b8 Generated table #84@0: 364 keys, 190359 bytes
+2026/08/23-05:27:10.161 38b8 Compacted 4@0 + 1@1 files => 190359 bytes
+2026/08/23-05:27:10.165 38b8 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/08/23-05:27:10.168 38b8 Delete type=2 #75
+2026/08/23-05:27:10.168 38b8 Delete type=2 #77
+2026/08/23-05:27:10.168 38b8 Delete type=2 #79
+2026/08/23-05:27:10.168 38b8 Delete type=2 #81
+2026/08/23-05:27:10.168 38b8 Delete type=2 #83
+2026/08/23-05:27:48.034 38b8 Level-0 table #86: started
+2026/08/23-05:27:48.045 38b8 Level-0 table #86: 56488 bytes OK
+2026/08/23-05:27:48.049 38b8 Delete type=0 #82
+2026/08/23-05:28:10.434 38b8 Level-0 table #88: started
+2026/08/23-05:28:10.443 38b8 Level-0 table #88: 60340 bytes OK
+2026/08/23-05:28:10.449 38b8 Delete type=0 #85
+2026/08/23-05:29:21.092 38b8 Level-0 table #90: started
+2026/08/23-05:29:21.101 38b8 Level-0 table #90: 53974 bytes OK
+2026/08/23-05:29:21.108 38b8 Delete type=0 #87
