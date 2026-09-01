@@ -26,11 +26,11 @@ CAPTCHA_CHECK = 2       # Har 2 sec mein check (jaldi detect hoga)
 USE_REAL_CHROME = True
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
-# Output files
-URLS_CSV = "urls.csv"               # Saari URLs yahan
-OUTPUT_CSV = "results.csv"          # Codes yahan
-DEALS_CSV = "deals.csv"
-SEEN_CODES_FILE = "data/seen_codes.json"
+# Output files - UK batch separate from previous runs
+URLS_CSV = "urls_uk.csv"
+OUTPUT_CSV = "results_uk.csv"
+DEALS_CSV = "deals_uk.csv"
+SEEN_CODES_FILE = "data/seen_codes_uk.json"
 
 # Browser
 HEADLESS = False
@@ -39,7 +39,7 @@ SLOW_MO = 300
 # ============================================
 # AI AGENT
 # ============================================
-USE_AI = True
+USE_AI = False
 AI_PROVIDER = "gemini"     # gemini
 AI_API_KEY = ""   # ollama ke liye ""
 AI_MODEL = "gemini-3.1-flash-lite"       # Sabse sasta aur fast model for web scraping
