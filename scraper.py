@@ -3,13 +3,19 @@ Coupon Code Scraper - UK batch
 Usage: python scraper.py
 """
 import os
+import sys
 import re
 import csv
 import json
 import time
 import random
 from datetime import datetime
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse, urljoin
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 from playwright.sync_api import sync_playwright
 import config
@@ -130,21 +136,50 @@ def build_search_url(query, region, page_num):
     return f"https://www.google.com/search?q={q}&gl={country}&hl=en&start={start}"
 
 
-def normalise_search_href(href):
+def normalise_search_href(href, page=None, goto_cache=None):
     """Return the real external result URL from Google/Bing wrappers."""
     if not href:
         return None
 
     href = href.strip()
 
-    # Google can expose /url?q=https://... or /url?url=https://...
+    # 1. Direct google /url? wrapper with embedded query parameter
     if href.startswith("/url?"):
         parsed = urlparse(href)
         params = parse_qs(parsed.query)
         target = (params.get("q") or params.get("url") or [None])[0]
-        if not target:
+        if target:
+            href = unquote(target)
+        else:
             return None
-        href = unquote(target)
+
+    # 2. Google /goto? wrapper (new style tokenized redirect)
+    elif href.startswith("/goto?") or "google.com/goto?" in href:
+        if goto_cache is not None and href in goto_cache:
+            return goto_cache[href]
+
+        if not page:
+            return None
+
+        full_url = urljoin("https://www.google.com", href)
+        target = None
+        try:
+            res = page.request.get(full_url, max_redirects=5, timeout=8000)
+            target = res.url
+            if target and target.startswith(("http://", "https://")):
+                parsed = urlparse(target)
+                host = parsed.netloc.lower()
+                if "google." in host or "bing.com" in host:
+                    target = None
+            else:
+                target = None
+        except Exception:
+            target = None
+
+        if goto_cache is not None:
+            goto_cache[href] = target
+        return target
+
     elif href.startswith("/"):
         return None
 
@@ -152,17 +187,36 @@ def normalise_search_href(href):
         parsed = urlparse(href)
         host = parsed.netloc.lower()
 
-        # Absolute Google redirect wrapper.
+        # Absolute Google redirect wrapper
         if "google." in host:
-            if parsed.path != "/url":
+            if parsed.path == "/goto" and page:
+                if goto_cache is not None and href in goto_cache:
+                    return goto_cache[href]
+                target = None
+                try:
+                    res = page.request.get(href, max_redirects=5, timeout=8000)
+                    target = res.url
+                    if target and target.startswith(("http://", "https://")):
+                        parsed = urlparse(target)
+                        if "google." in parsed.netloc.lower() or "bing.com" in parsed.netloc.lower():
+                            target = None
+                    else:
+                        target = None
+                except Exception:
+                    target = None
+                if goto_cache is not None:
+                    goto_cache[href] = target
+                return target
+            elif parsed.path == "/url":
+                params = parse_qs(parsed.query)
+                target = (params.get("q") or params.get("url") or [None])[0]
+                if not target:
+                    return None
+                href = unquote(target)
+                parsed = urlparse(href)
+                host = parsed.netloc.lower()
+            else:
                 return None
-            params = parse_qs(parsed.query)
-            target = (params.get("q") or params.get("url") or [None])[0]
-            if not target:
-                return None
-            href = unquote(target)
-            parsed = urlparse(href)
-            host = parsed.netloc.lower()
 
         if not href.startswith(("http://", "https://")):
             return None
@@ -176,16 +230,17 @@ def normalise_search_href(href):
 
 def extract_search_links(page):
     links = []
+    goto_cache = {}
     try:
         if config.SEARCH_ENGINE == "bing":
             for el in page.query_selector_all("li.b_algo h2 a"):
-                href = normalise_search_href(el.get_attribute("href"))
+                href = normalise_search_href(el.get_attribute("href"), page=page, goto_cache=goto_cache)
                 if href:
                     links.append(href)
         else:
-            # Google changes result markup frequently. Use several result-like
-            # selectors instead of assuming every title is h3.closest('a').
             selectors = [
+                "a[href*='/goto']",
+                "a[href*='/url']",
                 "a:has(h3)",
                 "a:has([role='heading'])",
                 "div.MjjYud a[href]",
@@ -195,7 +250,8 @@ def extract_search_links(page):
             for selector in selectors:
                 try:
                     for el in page.query_selector_all(selector):
-                        href = normalise_search_href(el.get_attribute("href"))
+                        raw_href = el.get_attribute("href")
+                        href = normalise_search_href(raw_href, page=page, goto_cache=goto_cache)
                         if href:
                             links.append(href)
                 except Exception:
