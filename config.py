@@ -6,7 +6,7 @@
 SEARCH_ENGINE = "google"
 
 # Regions
-REGIONS = ["us"]
+REGIONS = ["uk"]
 
 # Google ke kitne pages search karne hain (page 1, page 2...)
 SEARCH_PAGES = 2
