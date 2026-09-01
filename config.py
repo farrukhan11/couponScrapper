@@ -26,6 +26,7 @@ CAPTCHA_TIMEOUT = 300   # Max wait (agar solve na kar sako)
 CAPTCHA_CHECK = 2       # Har 2 sec mein check (jaldi detect hoga)
 
 # Apna Chrome use karo
+USE_CDP = False
 USE_REAL_CHROME = True
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 CHROME_USER_DATA_DIR = "chrome_profile"

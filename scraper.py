@@ -293,7 +293,22 @@ def wait_for_captcha(page, target_url=None):
     print("  ⚠️ CAPTCHA timeout")
 
 
-def search_for_coupons(page, brand, region):
+def get_or_recover_page(context, current_page):
+    """Return current page if alive, else open a new one from context."""
+    try:
+        _ = current_page.url  # will raise if page is closed
+        return current_page
+    except Exception:
+        try:
+            pages = context.pages
+            if pages:
+                return pages[-1]
+            return context.new_page()
+        except Exception:
+            return context.new_page()
+
+
+def search_for_coupons(page, brand, region, context=None):
     queries = [
         f"{brand} coupon code",
         f"{brand} discount code",
@@ -304,6 +319,9 @@ def search_for_coupons(page, brand, region):
         print(f"  🔍 {query}")
         for page_num in range(1, config.SEARCH_PAGES + 1):
             try:
+                # Recover page if it was closed by Google consent
+                if context:
+                    page = get_or_recover_page(context, page)
                 search_url = build_search_url(query, region, page_num)
                 page.goto(
                     search_url,
@@ -606,7 +624,16 @@ def main():
     )
 
     with sync_playwright() as p:
-        if config.USE_REAL_CHROME:
+        if getattr(config, "USE_CDP", False):
+            print("  🌐 Connecting to running Chrome via CDP...")
+            try:
+                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                context = browser.contexts[0]
+                page = context.pages[0] if context.pages else context.new_page()
+            except Exception as e:
+                print(f"  ❌ Failed to connect to CDP (is Chrome running with --remote-debugging-port=9222?): {e}")
+                return
+        elif config.USE_REAL_CHROME:
             user_data_dir = getattr(config, "CHROME_USER_DATA_DIR", "chrome_profile")
             profile_args = ["--disable-blink-features=AutomationControlled"]
             if hasattr(config, "CHROME_PROFILE") and config.CHROME_PROFILE:
@@ -651,7 +678,7 @@ def main():
                     urls = read_urls_from_csv(brand, region)
                     print(f"  📂 STEP 2: {len(urls)} URLs loaded from CSV for {region.upper()}")
                 else:
-                    urls = search_for_coupons(page, brand, region)
+                    urls = search_for_coupons(page, brand, region, context=context)
 
                 if args.step1 or getattr(config, "SEARCH_ONLY", False):
                     print(f"  📁 STEP 1: {len(urls)} URLs captured in {config.URLS_CSV}. Stopping here for {brand}.")
