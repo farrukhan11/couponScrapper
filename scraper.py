@@ -18,7 +18,14 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 from playwright.sync_api import sync_playwright
+import requests
+from concurrent.futures import ThreadPoolExecutor
 import config
+
+REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
 
 BAD_WORDS = {
@@ -133,129 +140,100 @@ def build_search_url(query, region, page_num):
 
     country = "gb" if region == "uk" else region
     start = (page_num - 1) * 10
-    return f"https://www.google.com/search?q={q}&gl={country}&hl=en&start={start}"
+    if start > 0:
+        return f"https://www.google.com/search?q={q}&gl={country}&hl=en&start={start}"
+    return f"https://www.google.com/search?q={q}&gl={country}&hl=en"
 
 
-def normalise_search_href(href, page=None, goto_cache=None):
-    """Return the real external result URL from Google/Bing wrappers."""
-    if not href:
-        return None
-
-    href = href.strip()
-
-    # 1. Direct google /url? wrapper with embedded query parameter
-    if href.startswith("/url?"):
-        parsed = urlparse(href)
-        params = parse_qs(parsed.query)
-        target = (params.get("q") or params.get("url") or [None])[0]
-        if target:
-            href = unquote(target)
-        else:
-            return None
-
-    # 2. Google /goto? wrapper (new style tokenized redirect)
-    elif href.startswith("/goto?") or "google.com/goto?" in href:
-        if goto_cache is not None and href in goto_cache:
-            return goto_cache[href]
-
-        if not page:
-            return None
-
-        full_url = urljoin("https://www.google.com", href)
-        target = None
-        try:
-            res = page.request.get(full_url, max_redirects=5, timeout=8000)
-            target = res.url
-            if target and target.startswith(("http://", "https://")):
-                parsed = urlparse(target)
-                host = parsed.netloc.lower()
-                if "google." in host or "bing.com" in host:
-                    target = None
-            else:
-                target = None
-        except Exception:
-            target = None
-
-        if goto_cache is not None:
-            goto_cache[href] = target
-        return target
-
-    elif href.startswith("/"):
-        return None
-
+def resolve_redirect_url(url):
+    """Fast parallel resolver for Google /goto redirects."""
+    if not url.startswith("http"):
+        url = urljoin("https://www.google.com", url)
     try:
-        parsed = urlparse(href)
-        host = parsed.netloc.lower()
-
-        # Absolute Google redirect wrapper
-        if "google." in host:
-            if parsed.path == "/goto" and page:
-                if goto_cache is not None and href in goto_cache:
-                    return goto_cache[href]
-                target = None
-                try:
-                    res = page.request.get(href, max_redirects=5, timeout=8000)
-                    target = res.url
-                    if target and target.startswith(("http://", "https://")):
-                        parsed = urlparse(target)
-                        if "google." in parsed.netloc.lower() or "bing.com" in parsed.netloc.lower():
-                            target = None
-                    else:
-                        target = None
-                except Exception:
-                    target = None
-                if goto_cache is not None:
-                    goto_cache[href] = target
-                return target
-            elif parsed.path == "/url":
-                params = parse_qs(parsed.query)
-                target = (params.get("q") or params.get("url") or [None])[0]
-                if not target:
-                    return None
-                href = unquote(target)
-                parsed = urlparse(href)
-                host = parsed.netloc.lower()
-            else:
-                return None
-
-        if not href.startswith(("http://", "https://")):
-            return None
-        if "google." in host or "bing.com" in host:
-            return None
+        r = requests.get(url, headers=REQUEST_HEADERS, timeout=4, stream=True, allow_redirects=True)
+        final_url = r.url
+        if final_url and final_url.startswith(("http://", "https://")):
+            parsed = urlparse(final_url)
+            host = parsed.netloc.lower()
+            if "google." not in host and "bing.com" not in host:
+                return final_url
     except Exception:
-        return None
-
-    return href
+        pass
+    return None
 
 
 def extract_search_links(page):
     links = []
-    goto_cache = {}
     try:
         if config.SEARCH_ENGINE == "bing":
             for el in page.query_selector_all("li.b_algo h2 a"):
-                href = normalise_search_href(el.get_attribute("href"), page=page, goto_cache=goto_cache)
-                if href:
+                href = el.get_attribute("href")
+                if href and href.startswith(("http://", "https://")):
                     links.append(href)
         else:
-            selectors = [
-                "a[href*='/goto']",
-                "a[href*='/url']",
-                "a:has(h3)",
-                "a:has([role='heading'])",
-                "div.MjjYud a[href]",
-                "div.tF2Cxc a[href]",
-                "#search a[href]",
-            ]
-            for selector in selectors:
+            raw_hrefs = page.evaluate("() => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href'))")
+            goto_urls = []
+
+            for href in raw_hrefs:
+                if not href:
+                    continue
+                href = href.strip()
+                if href.startswith("#") or href.startswith("javascript:") or href.startswith("mailto:"):
+                    continue
+
+                # 1. Direct google /url? wrapper
+                if href.startswith("/url?"):
+                    parsed = urlparse(href)
+                    params = parse_qs(parsed.query)
+                    target = (params.get("q") or params.get("url") or [None])[0]
+                    if target:
+                        target = unquote(target)
+                        if target.startswith(("http://", "https://")):
+                            p = urlparse(target)
+                            if "google." not in p.netloc.lower() and "bing.com" not in p.netloc.lower():
+                                links.append(target)
+                    continue
+
+                # 2. Google /goto? wrapper
+                if href.startswith("/goto?") or "google.com/goto?" in href or (href.startswith("/") and "goto?" in href):
+                    goto_urls.append(href)
+                    continue
+
+                if href.startswith("/"):
+                    continue
+
+                # 3. Direct external links
                 try:
-                    for el in page.query_selector_all(selector):
-                        raw_href = el.get_attribute("href")
-                        href = normalise_search_href(raw_href, page=page, goto_cache=goto_cache)
-                        if href:
-                            links.append(href)
+                    p = urlparse(href)
+                    host = p.netloc.lower()
+                    if "google." in host:
+                        if p.path == "/goto":
+                            goto_urls.append(href)
+                        elif p.path == "/url":
+                            params = parse_qs(p.query)
+                            target = (params.get("q") or params.get("url") or [None])[0]
+                            if target:
+                                target = unquote(target)
+                                if target.startswith(("http://", "https://")):
+                                    p2 = urlparse(target)
+                                    if "google." not in p2.netloc.lower():
+                                        links.append(target)
+                    elif "bing.com" in host:
+                        continue
+                    elif href.startswith(("http://", "https://")):
+                        links.append(href)
                 except Exception:
                     continue
+
+            # Resolve all /goto? redirects concurrently in background threads
+            if goto_urls:
+                unique_gotos = list(set(goto_urls))
+                with ThreadPoolExecutor(max_workers=15) as executor:
+                    resolved = list(executor.map(resolve_redirect_url, unique_gotos))
+                    for r in resolved:
+                        if r:
+                            links.append(r)
+
     except Exception:
         pass
     return unique_list(links)
@@ -284,19 +262,21 @@ def filter_coupon_urls(urls):
 
 def is_captcha_page(page):
     try:
-        if "/sorry/" in page.url.lower() or "captcha" in page.url.lower():
-            return True
-        body = page.inner_text("body").lower()
-        indicators = [
-            "unusual traffic", "verify you are human", "are you a robot",
-            "before you continue", "complete the security check",
-        ]
-        return any(item in body for item in indicators)
+        url = page.url.lower()
+        if "/sorry/" in url:
+            # Check if captcha form or frame is still visible
+            has_captcha_el = page.query_selector("form#captcha-form, iframe[src*='recaptcha'], div#recaptcha, .g-recaptcha, #captcha")
+            if has_captcha_el:
+                return True
+            body = page.inner_text("body").lower()
+            indicators = ["unusual traffic", "verify you are human", "are you a robot", "complete the security check"]
+            return any(item in body for item in indicators)
+        return False
     except Exception:
         return False
 
 
-def wait_for_captcha(page):
+def wait_for_captcha(page, target_url=None):
     if not is_captcha_page(page):
         return
     print("  🛑 CAPTCHA detected! Browser mein manually solve karo...")
@@ -306,7 +286,9 @@ def wait_for_captcha(page):
         waited += config.CAPTCHA_CHECK
         if not is_captcha_page(page):
             print(f"  ✅ CAPTCHA solved ({waited}s)")
-            random_delay(2, 3)
+            random_delay(1, 2)
+            if target_url and ("/sorry/" in page.url.lower() or "google.com" in page.url.lower() and "/search" not in page.url.lower()):
+                page.goto(target_url, wait_until="domcontentloaded", timeout=15000)
             return
     print("  ⚠️ CAPTCHA timeout")
 
@@ -322,17 +304,18 @@ def search_for_coupons(page, brand, region):
         print(f"  🔍 {query}")
         for page_num in range(1, config.SEARCH_PAGES + 1):
             try:
+                search_url = build_search_url(query, region, page_num)
                 page.goto(
-                    build_search_url(query, region, page_num),
+                    search_url,
                     wait_until="domcontentloaded",
                     timeout=20000,
                 )
-                random_delay(2, 4)
-                wait_for_captcha(page)
+                random_delay(1, 2)
+                wait_for_captcha(page, search_url)
                 try:
                     page.wait_for_selector(
                         "#search a[href], h3, [role='heading']",
-                        timeout=10000,
+                        timeout=5000,
                     )
                 except Exception:
                     pass
@@ -575,9 +558,37 @@ def extract_codes_from_page(page, url):
     return clean
 
 
+def read_urls_from_csv(target_brand, target_region):
+    urls = []
+    if not os.path.exists(config.URLS_CSV):
+        return urls
+    with open(config.URLS_CSV, "r", encoding="utf-8", errors="ignore") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if len(row) >= 4:
+                b, r, _, u = row[0].strip(), row[1].strip(), row[2].strip(), row[3].strip()
+                if b.lower() == target_brand.lower() and r.lower() == target_region.lower():
+                    urls.append(u)
+            elif len(row) == 2:
+                b, u = row[0].strip(), row[1].strip()
+                if b.lower() == target_brand.lower():
+                    urls.append(u)
+    return filter_coupon_urls(urls)[:config.MAX_SITES_PER_BRAND]
+
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Coupon Code Scraper")
+    parser.add_argument("--step1", action="store_true", help="Step 1: Only search for links and save to CSV")
+    parser.add_argument("--step2", action="store_true", help="Step 2: Only read links from CSV and visit them")
+    args = parser.parse_args()
+
     print("=" * 55)
     print("🎫 COUPON CODE SCRAPER - UK")
+    if args.step1:
+        print("🛠️ MODE: STEP 1 (Search Only)")
+    elif args.step2:
+        print("🛠️ MODE: STEP 2 (Visit Links from CSV)")
     print("=" * 55)
 
     create_folders()
@@ -596,14 +607,19 @@ def main():
 
     with sync_playwright() as p:
         if config.USE_REAL_CHROME:
+            user_data_dir = getattr(config, "CHROME_USER_DATA_DIR", "chrome_profile")
+            profile_args = ["--disable-blink-features=AutomationControlled"]
+            if hasattr(config, "CHROME_PROFILE") and config.CHROME_PROFILE:
+                profile_args.append(f"--profile-directory={config.CHROME_PROFILE}")
+
             context = p.chromium.launch_persistent_context(
-                user_data_dir="chrome_profile",
+                user_data_dir=user_data_dir,
                 executable_path=config.CHROME_PATH,
                 headless=config.HEADLESS,
                 slow_mo=config.SLOW_MO,
                 viewport={"width": 1920, "height": 1080},
                 locale=locale,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=profile_args,
             )
             page = context.pages[0] if context.pages else context.new_page()
         else:
@@ -623,8 +639,24 @@ def main():
             brand_key = brand.lower()
             seen_codes.setdefault(brand_key, [])
 
+            # Agar Step 1 chal raha hai aur is brand ke URLs pehle se CSV mein hain, toh skip karein
+            if args.step1:
+                existing = read_urls_from_csv(brand, config.REGIONS[0] if config.REGIONS else "uk")
+                if len(existing) >= 3:
+                    print(f"  ⏩ Pehle se {len(existing)} URLs CSV mein mojood hain. Skipping {brand}...")
+                    continue
+
             for region in config.REGIONS:
-                urls = search_for_coupons(page, brand, region)
+                if args.step2:
+                    urls = read_urls_from_csv(brand, region)
+                    print(f"  📂 STEP 2: {len(urls)} URLs loaded from CSV for {region.upper()}")
+                else:
+                    urls = search_for_coupons(page, brand, region)
+
+                if args.step1 or getattr(config, "SEARCH_ONLY", False):
+                    print(f"  📁 STEP 1: {len(urls)} URLs captured in {config.URLS_CSV}. Stopping here for {brand}.")
+                    continue
+
                 print(f"  🌍 {region.upper()}: {len(urls)} sites visit hongi")
 
                 for site_index, url in enumerate(urls, 1):
