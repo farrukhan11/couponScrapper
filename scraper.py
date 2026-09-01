@@ -9,7 +9,7 @@ import json
 import time
 import random
 from datetime import datetime
-from urllib.parse import quote_plus
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 
 from playwright.sync_api import sync_playwright
 import config
@@ -130,24 +130,76 @@ def build_search_url(query, region, page_num):
     return f"https://www.google.com/search?q={q}&gl={country}&hl=en&start={start}"
 
 
+def normalise_search_href(href):
+    """Return the real external result URL from Google/Bing wrappers."""
+    if not href:
+        return None
+
+    href = href.strip()
+
+    # Google can expose /url?q=https://... or /url?url=https://...
+    if href.startswith("/url?"):
+        parsed = urlparse(href)
+        params = parse_qs(parsed.query)
+        target = (params.get("q") or params.get("url") or [None])[0]
+        if not target:
+            return None
+        href = unquote(target)
+    elif href.startswith("/"):
+        return None
+
+    try:
+        parsed = urlparse(href)
+        host = parsed.netloc.lower()
+
+        # Absolute Google redirect wrapper.
+        if "google." in host:
+            if parsed.path != "/url":
+                return None
+            params = parse_qs(parsed.query)
+            target = (params.get("q") or params.get("url") or [None])[0]
+            if not target:
+                return None
+            href = unquote(target)
+            parsed = urlparse(href)
+            host = parsed.netloc.lower()
+
+        if not href.startswith(("http://", "https://")):
+            return None
+        if "google." in host or "bing.com" in host:
+            return None
+    except Exception:
+        return None
+
+    return href
+
+
 def extract_search_links(page):
     links = []
     try:
         if config.SEARCH_ENGINE == "bing":
             for el in page.query_selector_all("li.b_algo h2 a"):
-                href = el.get_attribute("href")
-                if href and href.startswith("http"):
+                href = normalise_search_href(el.get_attribute("href"))
+                if href:
                     links.append(href)
         else:
-            for h3 in page.query_selector_all("h3"):
+            # Google changes result markup frequently. Use several result-like
+            # selectors instead of assuming every title is h3.closest('a').
+            selectors = [
+                "a:has(h3)",
+                "a:has([role='heading'])",
+                "div.MjjYud a[href]",
+                "div.tF2Cxc a[href]",
+                "#search a[href]",
+            ]
+            for selector in selectors:
                 try:
-                    href = h3.evaluate(
-                        "el => el.closest('a') ? el.closest('a').href : null"
-                    )
+                    for el in page.query_selector_all(selector):
+                        href = normalise_search_href(el.get_attribute("href"))
+                        if href:
+                            links.append(href)
                 except Exception:
-                    href = None
-                if href and href.startswith("http") and "google." not in href:
-                    links.append(href)
+                    continue
     except Exception:
         pass
     return unique_list(links)
@@ -222,7 +274,10 @@ def search_for_coupons(page, brand, region):
                 random_delay(2, 4)
                 wait_for_captcha(page)
                 try:
-                    page.wait_for_selector("h3", timeout=10000)
+                    page.wait_for_selector(
+                        "#search a[href], h3, [role='heading']",
+                        timeout=10000,
+                    )
                 except Exception:
                     pass
                 links = extract_search_links(page)
