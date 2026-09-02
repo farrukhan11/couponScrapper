@@ -43,8 +43,9 @@ HEADLESS = False
 SLOW_MO = 50
 
 # ============================================
-# AI AGENT
+# FIRECRAWL / EXTERNAL API
 # ============================================
+FIRECRAWL_API_KEY = "fc-5a9a8e92c80b427d99ec7072c4aa529f"   # Firecrawl API Key for Google Search without CAPTCHA
 USE_AI = False
 AI_PROVIDER = "gemini"     # gemini
 AI_API_KEY = ""   # ollama ke liye ""
