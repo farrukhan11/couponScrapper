@@ -120,53 +120,60 @@ async def step1_search_urls(region="uk"):
             query = f"discount code {brand} {region.upper()}"
             print(f"\n🏷️ [{i}/{len(brands)}] Firecrawl Google Search: {query}")
 
-            try:
-                resp = requests.post(
-                    "https://api.firecrawl.dev/v1/search",
-                    headers={
-                        "Authorization": f"Bearer {firecrawl_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "query": query,
-                        "limit": 10
-                    },
-                    timeout=15
-                )
+            for attempt in range(3):
+                try:
+                    resp = requests.post(
+                        "https://api.firecrawl.dev/v1/search",
+                        headers={
+                            "Authorization": f"Bearer {firecrawl_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "query": query,
+                            "limit": 10
+                        },
+                        timeout=15
+                    )
 
-                if resp.status_code == 200:
-                    data = resp.json()
-                    search_items = data.get("data", [])
-                    brand_urls = 0
-                    for item in search_items:
-                        raw_url = item.get("url", "")
-                        if not raw_url or not raw_url.startswith("http"):
-                            continue
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        search_items = data.get("data", [])
+                        brand_urls = 0
+                        for item in search_items:
+                            raw_url = item.get("url", "")
+                            if not raw_url or not raw_url.startswith("http"):
+                                continue
 
-                        clean = normalize_url(raw_url)
-                        if not clean:
-                            continue
+                            clean = normalize_url(raw_url)
+                            if not clean:
+                                continue
 
-                        parsed = urlparse(clean)
-                        domain = parsed.netloc.lower()
+                            parsed = urlparse(clean)
+                            domain = parsed.netloc.lower()
 
-                        if any(skip in domain for skip in SKIP_DOMAINS):
-                            continue
+                            if any(skip in domain for skip in SKIP_DOMAINS):
+                                continue
 
-                        key = (brand.lower(), clean.lower())
-                        if key in seen_urls:
-                            continue
-                        seen_urls.add(key)
+                            key = (brand.lower(), clean.lower())
+                            if key in seen_urls:
+                                continue
+                            seen_urls.add(key)
 
-                        all_results.append([brand, clean])
-                        brand_urls += 1
+                            all_results.append([brand, clean])
+                            brand_urls += 1
 
-                    print(f"  ✅ Found {brand_urls} unique Google URLs for {brand}")
-                else:
-                    print(f"  ❌ Firecrawl API Error {resp.status_code}: {resp.text[:100]}")
+                        print(f"  ✅ Found {brand_urls} unique Google URLs for {brand}")
+                        break
+                    elif resp.status_code == 429:
+                        print(f"  ⏳ Firecrawl Free Tier Rate Limit (10 req/min). Waiting 60s for reset (Attempt {attempt+1}/3)...")
+                        time.sleep(60)
+                    else:
+                        print(f"  ❌ Firecrawl API Error {resp.status_code}: {resp.text[:100]}")
+                        break
 
-            except Exception as e:
-                print(f"  ❌ Firecrawl Search error: {e}")
+                except Exception as e:
+                    print(f"  ❌ Firecrawl Search error: {e}")
+                    break
 
             time.sleep(1)
 
