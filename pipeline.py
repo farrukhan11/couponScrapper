@@ -93,6 +93,16 @@ BAD_CODE_WORDS = {
 }
 
 
+def get_region_query(brand, region):
+    r = region.lower()
+    if r == "us":
+        return f"coupon code {brand} working 2026"
+    elif r == "uk":
+        return f"discount code {brand} working 2026"
+    else:
+        return f"discount code {brand} {region.upper()} working 2026"
+
+
 # ============================================================
 # STEP 1: Search GOOGLE for Coupon URLs (UK/US Region)
 # ============================================================
@@ -117,8 +127,8 @@ async def step1_search_urls(region="uk"):
         import requests
 
         for i, brand in enumerate(brands, 1):
-            query = f"discount code {brand} {region.upper()}"
-            print(f"\n🏷️ [{i}/{len(brands)}] Firecrawl Google Search: {query}")
+            query = get_region_query(brand, region)
+            print(f"\n🏷️ [{i}/{len(brands)}] Firecrawl Google Search ({region.upper()}): {query}")
 
             for attempt in range(3):
                 try:
@@ -204,7 +214,7 @@ async def step1_search_urls(region="uk"):
         page = context.pages[0] if context.pages else await context.new_page()
 
         for i, brand in enumerate(brands, 1):
-            query = f"discount code {brand}"
+            query = get_region_query(brand, region)
             print(f"\n🏷️ [{i}/{len(brands)}] Searching Google ({region.upper()}): {query}")
 
             search_url = f"{google_domain}/search?q={quote_plus(query)}&gl={gl_param}&hl=en&num=20"
@@ -347,66 +357,93 @@ async def step2_scrape_markdown(test_limit=0):
 
 
 async def scrape_single_url(context, brand, url, semaphore):
-    """Scrape a single URL and save its Markdown."""
+    """Scrape a single URL and save its Markdown with resume support & retries."""
+    filename = url_to_filename(brand, url)
+    filepath = os.path.join(MARKDOWN_DIR, filename)
+
+    # Resume support: if already downloaded, skip
+    if os.path.exists(filepath) and os.path.getsize(filepath) > 100:
+        print(f"  ⏩ Cached: {brand} | {url[:60]}")
+        return "Success"
+
     async with semaphore:
         page = None
-        try:
-            page = await context.new_page()
-
-            # Block heavy resources
-            await page.route("**/*", lambda route: (
-                route.abort() if route.request.resource_type in ["image", "media", "font", "stylesheet"]
-                else route.continue_()
-            ))
-
+        for attempt in range(2):
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-            except PlaywrightTimeoutError:
-                pass  # continue with whatever loaded
+                page = await context.new_page()
 
-            await page.wait_for_timeout(JS_WAIT)
+                # Block heavy resources
+                await page.route("**/*", lambda route: (
+                    route.abort() if route.request.resource_type in ["image", "media", "font", "stylesheet"]
+                    else route.continue_()
+                ))
 
-            html = await page.content()
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                except PlaywrightTimeoutError:
+                    pass  # continue with whatever loaded
+                except Exception as e:
+                    err_msg = str(e)
+                    if "ERR_NAME_NOT_RESOLVED" in err_msg:
+                        print(f"  ⚠️ Dead domain (DNS not resolved): {url[:60]}")
+                        return "Dead Domain"
+                    elif "ERR_NETWORK_CHANGED" in err_msg:
+                        print(f"  🔄 Network changed, retrying in 2s: {url[:60]}")
+                        await asyncio.sleep(2)
+                        continue
+                    else:
+                        raise e
 
-            # Cloudflare check
-            if "Just a moment..." in html or "challenge-running" in html:
-                print(f"  ❌ Cloudflare: {url[:70]}")
-                return "Cloudflare"
+                await page.wait_for_timeout(JS_WAIT)
 
-            # Clean HTML → Markdown
-            soup = BeautifulSoup(html, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer", "iframe", "svg",
-                             "noscript", "meta", "link", "header", "form"]):
-                tag.decompose()
+                try:
+                    html = await page.content()
+                except Exception:
+                    await page.wait_for_timeout(1000)
+                    html = await page.content()
 
-            markdown_text = md_convert(str(soup), strip=["a", "img"], heading_style="ATX")
+                # Cloudflare check
+                if "Just a moment..." in html or "challenge-running" in html:
+                    print(f"  ❌ Cloudflare: {url[:70]}")
+                    return "Cloudflare"
 
-            # Save to file
-            filename = url_to_filename(brand, url)
-            filepath = os.path.join(MARKDOWN_DIR, filename)
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(f"<!-- brand: {brand} -->\n")
-                f.write(f"<!-- url: {url} -->\n\n")
-                f.write(markdown_text)
+                # Clean HTML → Markdown
+                soup = BeautifulSoup(html, "html.parser")
+                for tag in soup(["script", "style", "nav", "footer", "iframe", "svg",
+                                 "noscript", "meta", "link", "header", "form"]):
+                    tag.decompose()
 
-            print(f"  ✅ {brand} | {url[:60]}")
-            return "Success"
+                markdown_text = md_convert(str(soup), strip=["a", "img"], heading_style="ATX")
 
-        except Exception as e:
-            print(f"  ❌ Error: {url[:60]} → {e}")
-            return f"Error: {e}"
-        finally:
-            if page:
-                await page.close()
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(f"<!-- brand: {brand} -->\n")
+                    f.write(f"<!-- url: {url} -->\n\n")
+                    f.write(markdown_text)
+
+                print(f"  ✅ {brand} | {url[:60]}")
+                return "Success"
+
+            except Exception as e:
+                if attempt == 0:
+                    await asyncio.sleep(1)
+                    continue
+                print(f"  ❌ Error: {url[:60]} → {e}")
+                return f"Error: {e}"
+            finally:
+                if page:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
 
 
 # ============================================================
-# STEP 3: Extract Codes from Markdown
+# STEP 3: Extract Codes and Deals from Markdown
 # ============================================================
 def step3_extract_codes():
-    """Read all Markdown files and extract coupon codes."""
+    """Read all Markdown files and extract coupon codes and deals."""
     print("\n" + "=" * 60)
-    print("📌 STEP 3: Extracting codes from Markdown")
+    print("📌 STEP 3: Extracting codes & deals from Markdown")
     print("=" * 60)
 
     if not os.path.isdir(MARKDOWN_DIR):
@@ -414,9 +451,10 @@ def step3_extract_codes():
         return
 
     md_files = [f for f in os.listdir(MARKDOWN_DIR) if f.endswith(".md")]
-    print(f"📂 Processing {len(md_files)} markdown files...")
+    active_brands = set(load_brands())
+    print(f"📂 Processing {len(md_files)} markdown files (Filtering for {len(active_brands)} active brands in {BRANDS_FILE})...")
 
-    all_codes = []
+    all_items = []
 
     for filename in md_files:
         filepath = os.path.join(MARKDOWN_DIR, filename)
@@ -426,31 +464,44 @@ def step3_extract_codes():
         # Parse brand and url from comment headers
         brand = ""
         url = ""
-        text = ""
+        text_lines = []
         for line in lines:
             if line.startswith("<!-- brand:"):
                 brand = line.replace("<!-- brand:", "").replace("-->", "").strip()
             elif line.startswith("<!-- url:"):
                 url = line.replace("<!-- url:", "").replace("-->", "").strip()
             else:
-                text += line
+                text_lines.append(line)
 
-        if not brand or not text.strip():
+        if not brand or not text_lines:
             continue
 
-        # Extract codes
+        # Skip if this brand is not in active brands.txt
+        if active_brands and brand not in active_brands:
+            continue
+
+        text = "".join(text_lines)
+
+        # 1. Extract coupon codes
         codes = extract_codes_smart(text)
         for code in codes:
-            all_codes.append([brand, code, url])
+            all_items.append([brand, "Code", code, url])
 
-    # Save raw codes
+        # 2. Extract deals (Get Deal / Direct Offers)
+        deals = extract_deals_smart(text_lines)
+        for deal in deals:
+            all_items.append([brand, "Deal", deal, url])
+
+    # Save raw items
     with open(CODES_RAW_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["brand", "code", "source_url"])
-        for row in all_codes:
+        writer.writerow(["brand", "type", "value", "source_url"])
+        for row in all_items:
             writer.writerow(row)
 
-    print(f"\n✅ Step 3 Done! {len(all_codes)} raw codes extracted to {CODES_RAW_CSV}")
+    codes_count = sum(1 for r in all_items if r[1] == "Code")
+    deals_count = sum(1 for r in all_items if r[1] == "Deal")
+    print(f"\n✅ Step 3 Done! {codes_count} codes & {deals_count} deals extracted to {CODES_RAW_CSV}")
 
 
 def extract_codes_smart(text):
@@ -493,64 +544,140 @@ def extract_codes_smart(text):
         has_digits = any(c.isdigit() for c in code)
 
         if has_letters and has_digits:
-            # Strong signal — this is likely a real code
             valid_codes.append(code)
         elif has_letters and not has_digits:
-            # Pure alphabetical — only keep if it looks code-like
-            # Must be ALL CAPS and not a common word
             if code.isupper() and len(code) >= 5 and code not in BAD_CODE_WORDS:
                 valid_codes.append(code)
 
     return valid_codes
 
 
+def extract_deals_smart(lines):
+    """Extract deals and promotions (Get Deal / Direct Offers)."""
+    deals = set()
+    deal_triggers = {'get deal', 'activate deal', 'view deal', 'grab deal', 'claim deal', 'get this deal', 'shop deal'}
+    ignore_words = ['how do', 'review', 'about this', 'terms', 'privacy', 'similar stores', 'submit', 'faq', 't-mobile', 'expedia', 'wayfair', 'amazon']
+
+    for i, line in enumerate(lines):
+        clean_l = line.strip().lower()
+        if clean_l in deal_triggers:
+            # Look back up to 8 lines for the heading or deal title
+            for j in range(i - 1, max(-1, i - 9), -1):
+                prev = lines[j].strip()
+                if prev.startswith('###') or prev.startswith('##') or prev.startswith('* **'):
+                    title = re.sub(r'^[#*_\s]+|[#*_\s]+$', '', prev).strip()
+                    lower_t = title.lower()
+                    if len(title) >= 8 and not any(w in lower_t for w in ignore_words):
+                        deals.add(title)
+                        break
+    return list(deals)
+
+
 # ============================================================
-# STEP 4: Deduplicate Codes per Brand
+# STEP 4: Deduplicate and Group by Brand (1 Row Per Brand)
 # ============================================================
 def step4_deduplicate():
-    """Remove duplicate codes per brand and save final results."""
+    """Remove duplicate codes and deals, grouped cleanly per brand (1 row per brand)."""
     print("\n" + "=" * 60)
-    print("📌 STEP 4: Deduplicating codes per brand")
+    print("📌 STEP 4: Deduplicating and Grouping by Brand")
     print("=" * 60)
 
     if not os.path.exists(CODES_RAW_CSV):
         print(f"❌ {CODES_RAW_CSV} not found. Run --step3 first.")
         return
 
-    # Read raw codes
-    brand_codes = {}  # {brand: {code: source_url}}
+    # Structure: {brand: {'codes': set(), 'deals': set(), 'urls': set()}}
+    brand_data = {}
+
     with open(CODES_RAW_CSV, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            brand = row["brand"].strip()
-            code = row["code"].strip().upper()
-            url = row["source_url"].strip()
+            brand = row.get("brand", "").strip()
+            item_type = row.get("type", "Code").strip()
+            val = row.get("value", row.get("code", "")).strip()
+            url = row.get("source_url", "").strip()
 
-            if brand not in brand_codes:
-                brand_codes[brand] = {}
-            if code not in brand_codes[brand]:
-                brand_codes[brand][code] = url
+            if not brand or not val:
+                continue
 
-    # Save final deduplicated codes
+            if brand not in brand_data:
+                brand_data[brand] = {"codes": set(), "deals": set(), "urls": set()}
+
+            if item_type.lower() == "deal":
+                brand_data[brand]["deals"].add(val)
+            else:
+                brand_data[brand]["codes"].add(val.upper())
+
+            if url:
+                brand_data[brand]["urls"].add(url)
+
+    # 1. Save final summary CSV (1 row per brand with totals)
     total_codes = 0
+    total_deals = 0
+
     with open(CODES_FINAL_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["brand", "code", "source_url", "found_at"])
-        for brand in sorted(brand_codes.keys()):
-            codes = brand_codes[brand]
-            for code, url in sorted(codes.items()):
-                writer.writerow([brand, code, url, datetime.now().strftime("%Y-%m-%d %H:%M")])
-                total_codes += 1
+        writer.writerow(["brand", "total_codes", "coupon_codes", "total_deals", "deals", "source_urls", "last_updated"])
 
-    # Print summary
-    print(f"\n{'Brand':<35} {'Unique Codes':>12}")
-    print("-" * 50)
-    for brand in sorted(brand_codes.keys()):
-        count = len(brand_codes[brand])
-        print(f"  {brand:<33} {count:>10}")
-    print("-" * 50)
-    print(f"  {'TOTAL':<33} {total_codes:>10}")
-    print(f"\n✅ Step 4 Done! {total_codes} unique codes saved to {CODES_FINAL_CSV}")
+        for brand in sorted(brand_data.keys()):
+            codes_list = sorted(list(brand_data[brand]["codes"]))
+            deals_list = sorted(list(brand_data[brand]["deals"]))
+            urls_list = sorted(list(brand_data[brand]["urls"]))
+
+            total_codes += len(codes_list)
+            total_deals += len(deals_list)
+
+            writer.writerow([
+                brand,
+                len(codes_list),
+                " | ".join(codes_list) if codes_list else "None",
+                len(deals_list),
+                " | ".join(deals_list) if deals_list else "None",
+                " | ".join(urls_list),
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
+
+    # 2. Save individual .txt files per brand for direct Copy-Paste into Extension!
+    ext_dir = f"extension_codes_{REGION}"
+    os.makedirs(ext_dir, exist_ok=True)
+    # Clear old txt files in extension_codes directory to avoid stale brands
+    for old_file in os.listdir(ext_dir):
+        if old_file.endswith(".txt"):
+            try:
+                os.remove(os.path.join(ext_dir, old_file))
+            except Exception:
+                pass
+
+    for brand in sorted(brand_data.keys()):
+        safe_name = re.sub(r'[^\w\.-]', '_', brand)
+        txt_path = os.path.join(ext_dir, f"{safe_name}.txt")
+        codes_list = sorted(list(brand_data[brand]["codes"]))
+        with open(txt_path, "w", encoding="utf-8") as tf:
+            tf.write("\n".join(codes_list) + "\n")
+
+    # 3. Also save line-by-line CSV (brand, code, type)
+    line_by_line_csv = f"codes_line_by_line_{REGION}.csv"
+    with open(line_by_line_csv, "w", newline="", encoding="utf-8") as lf:
+        lwriter = csv.writer(lf)
+        lwriter.writerow(["brand", "type", "code_or_deal"])
+        for brand in sorted(brand_data.keys()):
+            for c in sorted(list(brand_data[brand]["codes"])):
+                lwriter.writerow([brand, "Code", c])
+            for d in sorted(list(brand_data[brand]["deals"])):
+                lwriter.writerow([brand, "Deal", d])
+
+    # Print summary table
+    print(f"\n{'Brand':<32} {'Codes':>8} {'Deals':>8} {'Total':>8}")
+    print("-" * 60)
+    for brand in sorted(brand_data.keys()):
+        c_count = len(brand_data[brand]["codes"])
+        d_count = len(brand_data[brand]["deals"])
+        print(f"  {brand:<30} {c_count:>8} {d_count:>8} {c_count + d_count:>8}")
+    print("-" * 60)
+    print(f"  {'TOTAL':<30} {total_codes:>8} {total_deals:>8} {total_codes + total_deals:>8}")
+    print(f"\n✅ Step 4 Done! Brand-wise grouped data saved to {CODES_FINAL_CSV}")
+    print(f"📂 Extension ready files (1 code per line) saved to: {ext_dir}/")
+    print(f"📄 Line-by-line CSV saved to: {line_by_line_csv}")
 
 
 # ============================================================
@@ -595,11 +722,40 @@ def normalize_url(raw_url):
         return raw_url
 
 
-def url_to_filename(brand, url):
-    """Create a safe filename from brand + url."""
-    url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
-    safe_brand = re.sub(r'[^\w]', '_', brand)[:20]
-    return f"{safe_brand}_{url_hash}.md"
+def clean_workspace(region):
+    """Delete old markdown, extension files, and CSVs for a clean new run."""
+    print("\n" + "=" * 60)
+    print(f"🧹 CLEANING WORKSPACE FOR REGION: {region.upper()}")
+    print("=" * 60)
+
+    md_dir = f"markdown_{region}"
+    ext_dir = f"extension_codes_{region}"
+
+    if os.path.isdir(md_dir):
+        for f in os.listdir(md_dir):
+            try:
+                os.remove(os.path.join(md_dir, f))
+            except Exception:
+                pass
+        print(f"  🗑️ Cleared: {md_dir}/")
+
+    if os.path.isdir(ext_dir):
+        for f in os.listdir(ext_dir):
+            try:
+                os.remove(os.path.join(ext_dir, f))
+            except Exception:
+                pass
+        print(f"  🗑️ Cleared: {ext_dir}/")
+
+    for csv_file in [f"urls_{region}.csv", f"codes_raw_{region}.csv", f"codes_final_{region}.csv", f"codes_line_by_line_{region}.csv"]:
+        if os.path.exists(csv_file):
+            try:
+                os.remove(csv_file)
+                print(f"  🗑️ Removed: {csv_file}")
+            except Exception:
+                pass
+
+    print("✨ Clean complete!\n")
 
 
 # ============================================================
@@ -612,15 +768,26 @@ async def async_main():
     parser.add_argument("--step3", action="store_true", help="Extract codes from Markdown")
     parser.add_argument("--step4", action="store_true", help="Deduplicate codes")
     parser.add_argument("--all", action="store_true", help="Run all steps")
+    parser.add_argument("--clean", action="store_true", help="Wipe old markdown and results before running")
     parser.add_argument("--region", type=str, default="uk", help="Region to search: uk or us")
     parser.add_argument("--test", type=int, default=0, help="Limit URLs for testing")
     args = parser.parse_args()
 
-    if not any([args.step1, args.step2, args.step3, args.step4, args.all]):
+    if not any([args.step1, args.step2, args.step3, args.step4, args.all, args.clean]):
         parser.print_help()
         return
 
+    global REGION, URLS_CSV, MARKDOWN_DIR, CODES_RAW_CSV, CODES_FINAL_CSV
     selected_region = args.region.lower()
+    REGION = selected_region
+    URLS_CSV = f"urls_{REGION}.csv"
+    MARKDOWN_DIR = f"markdown_{REGION}"
+    CODES_RAW_CSV = f"codes_raw_{REGION}.csv"
+    CODES_FINAL_CSV = f"codes_final_{REGION}.csv"
+
+    if args.clean:
+        clean_workspace(selected_region)
+
     print("=" * 60)
     print("🎫 COUPON SCRAPING PIPELINE")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
