@@ -11,6 +11,7 @@ import random
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import config
+import site_navigator
 
 # AI agent (agar file na ho to crash na ho)
 try:
@@ -34,6 +35,21 @@ def load_brands():
         brands = [line.strip() for line in f if line.strip()]
     print(f"✅ {len(brands)} brands loaded")
     return brands
+
+
+def load_sites():
+    if not os.path.exists(config.SITES_FILE):
+        print(f"❌ {config.SITES_FILE} nahi mila!")
+        return []
+    with open(config.SITES_FILE, "r") as f:
+        sites = [line.strip().rstrip("/") for line in f if line.strip()]
+    seen, unique = set(), []
+    for s in sites:
+        if s not in seen:
+            seen.add(s)
+            unique.append(s)
+    print(f"✅ {len(unique)} sites loaded")
+    return unique
 
 
 def load_seen_codes():
@@ -90,101 +106,19 @@ def save_deal_row(brand, region, page_url, deal_url, label):
 
 
 # ============================================
-# SEARCH
+# SITE SEARCH (Google/Bing ki jagah — ab client ki di hui sites par
+# unka apna search use hota hai; asal logic site_navigator.py mein hai)
 # ============================================
-def build_search_url(query, region, page_num):
-    if config.SEARCH_ENGINE == "bing":
-        cc = "gb" if region == "uk" else "us"
-        start = (page_num - 1) * 10 + 1
-        return f"https://www.bing.com/search?q={query}&cc={cc}&first={start}"
-    else:
-        start = (page_num - 1) * 10
-        return f"https://www.google.com/search?q={query}&gl={region}&hl=en&start={start}"
-
-
-def search_for_coupons(page, brand, region):
-    queries = [
-        f"coupon code {brand}",
-        f"{brand} discount code",
-    ]
-    all_urls = []
-    for query in queries:
-        for page_num in range(1, config.SEARCH_PAGES + 1):
-            try:
-                url = build_search_url(query, region, page_num)
-                page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                random_delay(2, 4)
-                wait_for_captcha(page)
-                try:
-                    page.wait_for_selector("h3", timeout=10000)
-                except Exception:
-                    pass
-                links = extract_search_links(page)
-                print(f"     🔎 Page {page_num}: {len(links)} links mile")
-                save_urls_to_csv(brand, region, page_num, links)
-                all_urls.extend(links)
-                random_delay(config.MIN_DELAY, config.MAX_DELAY)
-            except Exception as e:
-                print(f"  ⚠️  Search error: {e}")
-    return filter_coupon_urls(all_urls)[:config.MAX_SITES_PER_BRAND]
-
-
-def extract_search_links(page):
-    links = []
-    try:
-        if config.SEARCH_ENGINE == "bing":
-            for el in page.query_selector_all("li.b_algo h2 a"):
-                href = el.get_attribute("href")
-                if href and href.startswith("http"):
-                    links.append(href)
-        else:
-            for h3 in page.query_selector_all("h3"):
-                try:
-                    href = h3.evaluate("el => el.closest('a') ? el.closest('a').href : null")
-                except Exception:
-                    href = None
-                if href and href.startswith("http") and "google." not in href:
-                    links.append(href)
-    except Exception:
-        pass
-    seen = set()
-    unique = []
-    for u in links:
-        if u not in seen:
-            seen.add(u)
-            unique.append(u)
-    return unique
-
-
-def filter_coupon_urls(urls):
-    skip_domains = [
-        "youtube.com", "facebook.com", "twitter.com", "instagram.com",
-        "wikipedia.org", "reddit.com", "pinterest.com", "tiktok.com",
-        "google.com", "bing.com",
-    ]
-    coupon_indicators = [
-        "coupon", "deal", "discount", "promo", "voucher", "offer",
-        "retailmenot", "honey", "groupon", "couponfollow",
-        "vouchercodes", "hotukdeals", "dealspotr", "savings",
-        "couponcabin", "offers.com",
-    ]
-    priority, normal = [], []
-    for url in urls:
-        u = url.lower()
-        if any(d in u for d in skip_domains):
-            continue
-        if any(i in u for i in coupon_indicators):
-            priority.append(url)
-        else:
-            normal.append(url)
-    combined = priority + normal
-    seen = set()
-    unique = []
-    for url in combined:
-        if url not in seen:
-            seen.add(url)
-            unique.append(url)
-    return unique
+def search_on_given_sites(page, brand, sites, region):
+    urls = []
+    for site in sites:
+        print(f"    🌐 {site}")
+        target = site_navigator.find_brand_page(page, site, brand)
+        if target:
+            urls.append(target)
+            save_urls_to_csv(brand, region, site, [target])
+        random_delay(config.MIN_DELAY, config.MAX_DELAY)
+    return urls
 
 
 # ============================================
@@ -606,11 +540,12 @@ def main():
     print("=" * 50)
     create_folders()
     brands = load_brands()
-    if not brands:
+    sites = load_sites()
+    if not brands or not sites:
         return
     seen_codes = load_seen_codes()
     total_new = 0
-    print(f"🔍 Engine: {config.SEARCH_ENGINE.upper()} | 🌍 {config.REGIONS} | 📋 {len(brands)} brands\n")
+    print(f"🌐 {len(sites)} sites | 🌍 {config.REGIONS} | 📋 {len(brands)} brands\n")
 
     with sync_playwright() as p:
         if config.USE_REAL_CHROME:
@@ -637,8 +572,8 @@ def main():
             print(f"\n🏷️  [{i}/{len(brands)}] {brand}")
             count = 0
             for region in config.REGIONS:
-                urls = search_for_coupons(page, brand, region)
-                print(f"  🌍 {region.upper()}: {len(urls)} sites visit hongi")
+                urls = search_on_given_sites(page, brand, sites, region)
+                print(f"  🌍 {region.upper()}: {len(urls)} brand-pages mile")
                 for j, url in enumerate(urls, 1):
                     print(f"    🌐 [{j}/{len(urls)}] {url[:60]}")
                     codes, deals = extract_codes_from_page(page, url, brand, region)

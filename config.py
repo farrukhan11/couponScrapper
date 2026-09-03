@@ -2,17 +2,11 @@
 # CONFIGURATION
 # ============================================
 
-# Search engine: "google" ya "bing"
-SEARCH_ENGINE = "google"
+# Regions (sirf labeling/CSV ke liye ab, kyunke sites client ne di hain)
+REGIONS = ["uk"]
 
-# Regions
-REGIONS = ["us"]
-
-# Google ke kitne pages search karne hain (page 1, page 2...)
-SEARCH_PAGES = 2
-
-# Kitni coupon sites visit karni hain per brand
-MAX_SITES_PER_BRAND = 8
+# Client ki di hui coupon sites ki list (ek per line)
+SITES_FILE = "sites.txt"
 
 # Delays (seconds) - human-like
 MIN_DELAY = 8
