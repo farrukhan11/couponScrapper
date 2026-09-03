@@ -697,6 +697,11 @@ def load_brands():
 def load_urls_csv():
     """Load URLs from the CSV file."""
     if not os.path.exists(URLS_CSV):
+        print(f"❌ '{URLS_CSV}' not found!")
+        other_region = "us" if REGION == "uk" else "uk"
+        other_csv = f"urls_{other_region}.csv"
+        if os.path.exists(other_csv):
+            print(f"💡 HINT: Found '{other_csv}'. Did you forget to add '--region {other_region}'?")
         return []
     urls = []
     with open(URLS_CSV, "r", encoding="utf-8") as f:
@@ -720,6 +725,13 @@ def normalize_url(raw_url):
         return clean.rstrip("/") if clean != "/" else clean
     except Exception:
         return raw_url
+
+
+def url_to_filename(brand, url):
+    """Create a safe filename from brand + url."""
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
+    safe_brand = re.sub(r'[^\w]', '_', brand)[:20]
+    return f"{safe_brand}_{url_hash}.md"
 
 
 def clean_workspace(region):
