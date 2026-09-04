@@ -46,9 +46,11 @@ HEADLESS = False
 SLOW_MO = 50
 
 # ============================================
-# FIRECRAWL / EXTERNAL API
+# EXTERNAL API (DEPRECATED — ab use nahi hota)
 # ============================================
-FIRECRAWL_API_KEY = "fc-5a9a8e92c80b427d99ec7072c4aa529f"   # Firecrawl API Key for Google Search without CAPTCHA
+# Search ab own_search.py se hota hai (apna Google/Bing browser stack) —
+# koi Firecrawl/API dependency nahi. Key sirf legacy/reference ke liye:
+# FIRECRAWL_API_KEY = "fc-..."
 USE_AI = False
 AI_PROVIDER = "gemini"     # gemini
 AI_API_KEY = ""   # ollama ke liye ""

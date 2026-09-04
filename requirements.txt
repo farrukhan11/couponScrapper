@@ -1,2 +1,6 @@
 playwright
 google-genai
+flask
+requests
+beautifulsoup4
+markdownify
