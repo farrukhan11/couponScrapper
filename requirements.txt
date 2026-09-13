@@ -5,3 +5,4 @@ requests
 beautifulsoup4
 markdownify
 httpx
+crawl4ai
