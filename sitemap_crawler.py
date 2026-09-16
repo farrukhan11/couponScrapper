@@ -52,6 +52,21 @@ SITEMAP_SOURCES = {
         "index": "https://www.tenereteam.com/sitemap.xml",
         "filter": "stores",
     },
+    # --- baaki sites: apne sitemap index/flat se (site_profiles.json) ---
+    "shoppingspout.co.uk": {"index": "https://www.shoppingspout.co.uk/sitemap.xml", "filter": ""},
+    "dealsdaddy.co.uk": {"index": "https://dealsdaddy.co.uk/sitemap.xml", "filter": ""},
+    "savingsays.co.uk": {"index": "https://savingsays.co.uk/sitemap.xml", "filter": ""},
+    "savingsays.com": {"index": "https://savingsays.com/sitemap.xml", "filter": ""},
+    "albillz.com": {"index": "https://albillz.com/sitemap.xml", "filter": ""},
+    "groupon.co.uk": {"index": "https://www.groupon.co.uk/sitemap.xml", "filter": ""},
+    "couponreals.com": {"index": "https://couponreals.com/sitemap.xml", "filter": ""},
+    "myvouchercodes.co.uk": {"index": "https://www.myvouchercodes.co.uk/sitemap.xml", "filter": ""},
+    "myjuniper.co.uk": {"index": "https://sitemap.myjuniper.com/sitemap.xml", "filter": ""},
+    "allpromocode.uk": {"index": "https://www.allpromocode.uk/sitemap.xml", "filter": ""},
+    "moneysavingvouchercodes.co.uk": {"index": "https://www.moneysavingvouchercodes.co.uk/sitemap/sitemap.xml", "filter": ""},
+    "bajideals.com": {"index": "https://bajideals.com/sitemap_index.xml", "filter": ""},
+    "savyspot.com": {"index": "https://savyspot.com/sitemap_index.xml", "filter": ""},
+    "zubile.com": {"index": "https://zubile.com/sitemap.xml", "filter": ""},
 }
 
 BATCH = 25   # browser fetch chunk size
@@ -248,7 +263,9 @@ def fetch_firecrawl(url):
 # SITE CRAWL
 # ============================================================
 def resolve_index_children(dom, src):
-    """Sitemap index fetch karo → children URLs (filter ke saath)."""
+    """Sitemap index fetch karo → (urls, flat).
+    flat=True matlab sitemap khud flat tha (children sitemap files nahi,
+    seedhe store pages) — unhe dobara fetch nahi karna."""
     index_url = src["index"]
     word = src.get("filter", "")
     # httpx pehle
@@ -265,17 +282,21 @@ def resolve_index_children(dom, src):
         locs = decode_body(body) if body else None
     if not locs:
         print(f"   ⛔ sitemap index hi nahi mila: {index_url}")
-        return []
+        return [], False
     children = [l for l in locs if word in l.lower()] if word else locs
-    print(f"   🗂️  index: {len(locs)} children, filter '{word}': {len(children)} files")
-    return children
+    flat = not any(re.search(r"\.xml(\.gz)?($|[?])", c, re.I) for c in children)
+    kind = "flat sitemap" if flat else "index"
+    print(f"   🗂️  {kind}: {len(locs)} urls, filter '{word}': {len(children)}")
+    return children, flat
 
 
 def crawl_site(dom, src):
     """Ek site ke saare store URLs nikalo (httpx → browser → firecrawl)."""
     origin = f"https://{dom}"
     if isinstance(src, dict):
-        urls = resolve_index_children(dom, src)
+        urls, flat = resolve_index_children(dom, src)
+        if flat:
+            return urls
         kinds = [None] * len(urls)
     else:
         urls = [u for u, _ in src]

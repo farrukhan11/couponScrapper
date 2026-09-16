@@ -385,7 +385,11 @@ REVEAL_JS = r"""
 async def crawl4ai_reveal_pass(urls):
     """crawl4ai: stealth browser + REVEAL_JS (buttons auto-click) → final HTML.
     Return: {url: {code: method}}"""
-    from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+    try:
+        from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+    except Exception as e:
+        print(f"   ⚠️ crawl4ai available nahi ({str(e)[:50]}) — real-chrome fallback")
+        return {}
     out = {}
     sem = asyncio.Semaphore(4)
     bcfg = BrowserConfig(headless=True, verbose=False, enable_stealth=True, user_agent=UA)
@@ -495,17 +499,16 @@ async def run(brands):
     rows = []
     print()
     for b, lst in plan.items():
-        codes = {}   # code -> (method, via)
+        codes = {}   # code -> (method, source_url, via)
         for tier, u in lst:
             for c in static_map.get(u, []):
                 if c["code"] not in codes:
-                    codes[c["code"]] = (c["method"], u)
+                    codes[c["code"]] = (c["method"], u, "static")
             for c, method in reveal_map.get(u, {}).items():
                 if c not in codes:
-                    codes[c] = (method, "crawl4ai")
+                    codes[c] = (method, u, "crawl4ai")
         print(f"🎫 {b}: {len(codes)} codes")
-        for c, (method, via) in codes.items():
-            src = next((u for t, u in lst if u in static_map or u in reveal_map), "")
+        for c, (method, src, via) in codes.items():
             rows.append({"brand": b, "code": c, "method": method,
                          "via": via, "source_url": src})
 
@@ -521,22 +524,35 @@ async def run(brands):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a.strip() and not a.startswith("--")]
     # --region us  → output: results_us.csv (default uk)
+    # --file brands.txt  → brands file se list
     region = "uk"
-    if "--region" in sys.argv:
-        i = sys.argv.index("--region")
-        if len(sys.argv) > i + 1:
-            region = sys.argv[i + 1].lower().strip()
+    file_arg = None
+    args = []
+    argv = sys.argv[1:]
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--region" and i + 1 < len(argv):
+            region = argv[i + 1].lower().strip()
+            i += 2
+            continue
+        if a == "--file" and i + 1 < len(argv):
+            file_arg = argv[i + 1]
+            i += 2
+            continue
+        if a.startswith("--"):
+            i += 1
+            continue
+        if a.strip():
+            args.append(a)
+        i += 1
     RESULTS_CSV = f"results_{region}.csv"
-    if "--file" in sys.argv and len(sys.argv) > sys.argv.index("--file") + 1:
-        fn = sys.argv[sys.argv.index("--file") + 1]
-        with open(fn, "r", encoding="utf-8-sig") as f:
+    if file_arg:
+        with open(file_arg, "r", encoding="utf-8-sig") as f:
             args = [l.strip() for l in f if l.strip()]
     if not args:
         print('Usage: python page_scraper.py "commomy.com" ... | --file brands.txt')
         sys.exit(1)
 
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     asyncio.run(run(args))

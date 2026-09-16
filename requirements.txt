@@ -1,8 +1,4 @@
 playwright
-google-genai
-flask
-requests
-beautifulsoup4
-markdownify
 httpx
-crawl4ai
+requests
+crawl4ai>=0.9

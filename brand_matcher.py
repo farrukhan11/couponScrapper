@@ -53,7 +53,10 @@ def parse_brand(raw):
 
 
 def brand_keys(brand):
-    """Brand ke saare candidate keys (variations + domain)."""
+    """Brand ke candidate keys: poora naam + domain core.
+    Naam/domain ko chhote words mein nahi torta — warna "shop", "tech",
+    "universe", "hotels" jaise generic tokens doosre stores se false
+    match kar dete hain (Shop LC → shopbop/shopko)."""
     pb = parse_brand(brand)
     name = pb["name"]
     keys = []
@@ -64,16 +67,9 @@ def brand_keys(brand):
             keys.append(k)
 
     add(name)
-    # camelCase/underscore split: Arq8 -> arq8, MobilePixels -> mobilepixels
-    spaced = re.sub(r"[-_]+", " ", name)
-    for part in spaced.split():
-        add(part)
-    add(spaced)
     if pb["domain"]:
         dcore = TLD_RE.sub("", pb["domain"].replace("www.", ""))
         add(dcore)
-        for part in re.split(r"[-_.]", dcore):
-            add(part)
     return {"name": pb["name"], "domain": pb["domain"], "keys": keys}
 
 
@@ -118,21 +114,25 @@ def _score(bkey, ikey):
         return None, 0
     if bkey == ikey:
         return "exact", 100
-    # prefix dono taraf (min 4) — topper/betopper jaisa suffix-fuzzy yahan nahi aata
+    # prefix dono taraf (min 4) — topper/betopper jaisa suffix-fuzzy yahan nahi aata.
+    # Chhota key bade key ka 60% ho warna generic prefix (inmotion ⊂ inmotionhosting) noise deta hai.
     if len(bkey) >= 4 and len(ikey) >= 4:
-        if ikey.startswith(bkey):
+        if ikey.startswith(bkey) and len(bkey) >= 0.6 * len(ikey):
             return "prefix", 80 - abs(len(ikey) - len(bkey))
-        if bkey.startswith(ikey) and len(ikey) >= 5:
+        if bkey.startswith(ikey) and len(ikey) >= 5 and len(ikey) >= 0.6 * len(bkey):
             return "prefix", 60 - abs(len(ikey) - len(bkey))
-    # contains (dono >=5)
+    # contains (dono >=5) — chhota key bade key ka kam az kam 70% ho,
+    # warna "inmotion" ⊂ "skininmotion"/"partsinmotion" jaisa noise
     if len(bkey) >= 5 and len(ikey) >= 5:
-        if bkey in ikey:
-            return "contains", 50 - abs(len(ikey) - len(bkey))
-        if ikey in bkey:
-            return "contains", 40 - abs(len(ikey) - len(bkey))
-    # fuzzy (typos)
+        if min(len(bkey), len(ikey)) >= 0.7 * max(len(bkey), len(ikey)):
+            if bkey in ikey:
+                return "contains", 50 - abs(len(ikey) - len(bkey))
+            if ikey in bkey:
+                return "contains", 40 - abs(len(ikey) - len(bkey))
+    # fuzzy (typos) — 0.88 rakha taake shared-prefix wale different brands
+    # (kitchenuniverse ≈ kitchenknives @0.857) na aa jayein
     ratio = difflib.SequenceMatcher(None, bkey, ikey).ratio()
-    if ratio >= 0.85 and min(len(bkey), len(ikey)) >= 5:
+    if ratio >= 0.88 and min(len(bkey), len(ikey)) >= 5:
         return "fuzzy", int(ratio * 30)
     return None, 0
 
