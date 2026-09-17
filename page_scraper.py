@@ -38,6 +38,7 @@ RESULTS_CSV = "results_uk.csv"
 MAX_URLS_PER_BRAND = 10     # exact pehle, phir partials
 MAX_BODY = 3_000_000        # 3MB cap per page
 REVEAL_SKIP_THRESHOLD = 12  # itne codes static se mil gaye to crawl4ai skip
+RETRIES = 2                 # har fetch layer ke retry attempts
 
 # ============================================================
 # MINING
@@ -235,7 +236,8 @@ def page_is_relevant(html, url, brand):
 def fetch_httpx(url):
     try:
         with httpx.Client(http2=True, timeout=25, follow_redirects=True,
-                          headers={"User-Agent": UA}) as client:
+                          headers={"User-Agent": UA},
+                          transport=httpx.HTTPTransport(retries=RETRIES)) as client:
             r = client.get(url)
             if r.status_code == 200:
                 return r.text
@@ -244,9 +246,10 @@ def fetch_httpx(url):
         return None
 
 
-def browser_fetch_pages(urls_by_origin):
+def browser_fetch_pages(urls_by_origin, retries=RETRIES):
     """Blocked origins: Real Chrome headful + in-page fetch → HTML text.
-    urls_by_origin: {origin: [urls]} → {url: html_text}"""
+    urls_by_origin: {origin: [urls]} → {url: html_text}
+    Fail hui URLs ko isi origin page par reload ke saath retry karta hai."""
     out = {}
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
@@ -274,13 +277,27 @@ def browser_fetch_pages(urls_by_origin):
                 const t = await r.text();
                 return t.length > %d ? t.slice(0, %d) : t;
             }""" % (MAX_BODY, MAX_BODY)
-            for u in urls:
-                try:
-                    txt = page.evaluate(js, u)
-                    if txt and not txt.startswith("STATUS:"):
-                        out[u] = txt
-                except Exception:
-                    continue
+            pending = list(urls)
+            for attempt in range(retries + 1):
+                if not pending:
+                    break
+                still = []
+                for u in pending:
+                    try:
+                        txt = page.evaluate(js, u)
+                        if txt and not txt.startswith("STATUS:"):
+                            out[u] = txt
+                        else:
+                            still.append(u)
+                    except Exception:
+                        still.append(u)
+                pending = still
+                if pending and attempt < retries:
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=30000)
+                        page.wait_for_timeout(1200)
+                    except Exception:
+                        pass
             page.close()
         browser.close()
     return out
@@ -293,7 +310,7 @@ def fetch_pages_for_brands(url_list):
     for url in url_list:
         origin = "/".join(url.split("/")[:3])
         txt = fetch_httpx(url)
-        if txt:
+        if txt and not _is_challenge_page(txt):
             html_map[url] = txt
         else:
             blocked.setdefault(origin, []).append(url)
@@ -396,28 +413,94 @@ async def crawl4ai_reveal_pass(urls):
     async with AsyncWebCrawler(config=bcfg) as crawler:
         async def one(u):
             async with sem:
-                try:
-                    cfg = CrawlerRunConfig(
-                        cache_mode=CacheMode.BYPASS,
-                        js_code=REVEAL_JS,
-                        page_timeout=60000,
-                        delay_before_return_html=2.0,
-                        verbose=False,
-                    )
-                    r = await crawler.arun(url=u, config=cfg)
-                    html = getattr(r, "html", "") or ""
-                    if r.success and html and not _is_challenge_page(html):
-                        out[u] = {c["code"]: c["method"] for c in mine_codes(html)}
-                except Exception:
-                    pass
+                for attempt in range(RETRIES + 1):
+                    try:
+                        cfg = CrawlerRunConfig(
+                            cache_mode=CacheMode.BYPASS,
+                            js_code=REVEAL_JS,
+                            page_timeout=60000,
+                            delay_before_return_html=2.0,
+                            verbose=False,
+                        )
+                        r = await crawler.arun(url=u, config=cfg)
+                        html = getattr(r, "html", "") or ""
+                        if r.success and html and not _is_challenge_page(html):
+                            out[u] = {c["code"]: c["method"] for c in mine_codes(html)}
+                            return
+                    except Exception:
+                        pass
+                    if attempt < RETRIES:
+                        await asyncio.sleep(1.5 * (attempt + 1))
         await asyncio.gather(*(one(u) for u in urls))
     return out
 
 
 # ============================================================
+# CROSS-RUN TRACKING
+# ============================================================
+def _now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def load_tracking(region):
+    path = os.path.join("data", f"tracking_{region}.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def apply_tracking(rows, region):
+    """Har code par status (new/seen), first/last seen, times_seen.
+    data/tracking_<region>.json mein persist. Expired = pehle tha, is run
+    mein nahi mila (state mein rehta hai taake dobara aaye to 'seen' ho)."""
+    state = load_tracking(region)
+    now = _now()
+    found = {}
+    for r in rows:
+        b, c = r["brand"], r["code"]
+        found.setdefault(b, set()).add(c)
+        rec = state.setdefault(b, {})
+        e = rec.get(c)
+        if e:
+            r["status"] = "seen"
+            e["last_seen"] = now
+            e["times_seen"] = int(e.get("times_seen", 1)) + 1
+        else:
+            r["status"] = "new"
+            e = {"first_seen": now, "last_seen": now, "times_seen": 1}
+            rec[c] = e
+        e["method"] = r["method"]
+        e["via"] = r["via"]
+        e["source_url"] = r["source_url"]
+        r["first_seen"] = e["first_seen"]
+        r["last_seen"] = e["last_seen"]
+        r["times_seen"] = e["times_seen"]
+
+    summary = []
+    for b, rec in state.items():
+        f = found.get(b, set())
+        summary.append({
+            "brand": b, "found": len(f),
+            "new": sum(1 for r in rows if r["brand"] == b and r["status"] == "new"),
+            "seen": sum(1 for r in rows if r["brand"] == b and r["status"] == "seen"),
+            "expired": sum(1 for c in rec if c not in f),
+            "last_updated": now,
+        })
+    summary.sort(key=lambda s: s["brand"])
+    os.makedirs("data", exist_ok=True)
+    with open(os.path.join("data", f"tracking_{region}.json"), "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=1)
+    return summary
+
+
+# ============================================================
 # MAIN PIPELINE
 # ============================================================
-async def run(brands):
+async def run(brands, region="uk"):
     index = load_index()
     print(f"🗂️  Index: {len(index)} sites, {sum(len(m) for m in index.values())} stores\n")
 
@@ -442,6 +525,16 @@ async def run(brands):
     print(f"\n🌐 Fetching {len(all_urls)} pages (httpx → browser fallback)...")
     html_map = await asyncio.to_thread(fetch_pages_for_brands, all_urls)
     print(f"   ✅ {len(html_map)}/{len(all_urls)} pages mile")
+
+    # ---- missing pages: fresh browser se ek retry pass ----
+    missing = [u for u in all_urls if u not in html_map]
+    if missing:
+        print(f"   ↻ {len(missing)} missing pages — fresh browser retry...")
+        by_origin = {}
+        for u in missing:
+            by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
+        html_map.update(await asyncio.to_thread(browser_fetch_pages, by_origin, 1))
+        print(f"   ✅ {len(html_map)}/{len(all_urls)} pages mile (retry ke baad)")
 
     # ---- URL → best tier map (gate ke liye) ----
     tier_rank = {"exact": 0, "prefix": 1, "contains": 2, "fuzzy": 3}
@@ -512,14 +605,29 @@ async def run(brands):
             rows.append({"brand": b, "code": c, "method": method,
                          "via": via, "source_url": src})
 
+    # ---- cross-run tracking (new vs seen vs expired) ----
+    summary = apply_tracking(rows, region)
+    new = sum(1 for r in rows if r["status"] == "new")
+    expired = sum(s["expired"] for s in summary)
+    print(f"🆕 new: {new} | ♻️  seen: {len(rows) - new} | ⌛ expired: {expired}")
+
     # ---- save ----
+    fields = ["brand", "code", "method", "via", "source_url",
+              "status", "first_seen", "last_seen", "times_seen"]
     with open(RESULTS_CSV, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["brand", "code", "method", "via", "source_url"])
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
+    summary_file = f"summary_{region}.csv"
+    with open(summary_file, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["brand", "found", "new", "seen",
+                                          "expired", "last_updated"])
+        w.writeheader()
+        w.writerows(summary)
     total = len(rows)
     print(f"\n{'=' * 50}")
-    print(f"✅ DONE: {total} codes → {RESULTS_CSV}")
+    print(f"✅ DONE: {total} codes → {RESULTS_CSV} | "
+          f"{len(summary)} brands → {summary_file}")
     return rows
 
 
@@ -555,4 +663,4 @@ if __name__ == "__main__":
         print('Usage: python page_scraper.py "commomy.com" ... | --file brands.txt')
         sys.exit(1)
 
-    asyncio.run(run(args))
+    asyncio.run(run(args, region))
