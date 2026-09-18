@@ -11,17 +11,15 @@ Matched brand pages se coupon codes:
 Mining: HTML attrs + JSON/JS keys + text tokens (bad-words filter).
 
 Usage:
-  python page_scraper.py "commomy.com" "lgxnds.com" ...     # brands
+  python page_scraper.py "Shop LC|shoplc.com" ...     # brands
   python page_scraper.py --file brands.txt
 """
 import asyncio
 import csv
 import html as html_mod
-import json
 import os
 import re
 import sys
-from datetime import datetime
 
 import httpx
 
@@ -34,7 +32,7 @@ if hasattr(sys.stdout, "reconfigure"):
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
-RESULTS_CSV = "results_uk.csv"
+RESULTS_CSV = "results.csv"
 MAX_URLS_PER_BRAND = 10     # exact pehle, phir partials
 MAX_BODY = 3_000_000        # 3MB cap per page
 REVEAL_SKIP_THRESHOLD = 12  # itne codes static se mil gaye to crawl4ai skip
@@ -126,9 +124,47 @@ def looks_like_code(text):
     return False
 
 
-def mine_codes(html_text):
+TNR_COPY_BTN = re.compile(r'title="Copy code and go to store"')
+TNR_STATUS_RE = re.compile(r">(Worked|Failed|Restricted|Expired)</span>")
+
+
+def _tnr_code_ok(code):
+    c = (code or "").strip()
+    if not (3 <= len(c) <= 30):
+        return False
+    if " " in c or "*" in c or not re.match(r"^[A-Za-z0-9._-]+$", c):
+        return False
+    return c.lower() not in {"tbc", "tbd", "na", "n/a", "none", "null"}
+
+
+def mine_tenereteam_codes(html_text):
+    """tenereteam store page ke 'Recent tests' section se sirf woh codes jo
+    checkout test mein 'Worked' hue. Test row mein:
+    <button title="Copy code and go to store">...<span class="truncate">CODE</span>
+    ... uske baad status badge (Worked/Failed/Restricted/Expired).
+    Page ka JSON-LD 'couponCode' ghalat hota hai (Failed code bhi dikhata hai),
+    isliye use ignore karte hain."""
+    found = {}
+    positions = [m.start() for m in TNR_COPY_BTN.finditer(html_text)]
+    for i, p in enumerate(positions):
+        end = positions[i + 1] if i + 1 < len(positions) else min(len(html_text), p + 4000)
+        seg = html_text[p:end]
+        cm = re.search(r'<span class="truncate">([^<]+)</span>', seg)
+        if not cm:
+            continue
+        code = cm.group(1).strip().upper()
+        st = TNR_STATUS_RE.search(seg)
+        if st and st.group(1) == "Worked" and _tnr_code_ok(code):
+            found[code] = "tenereteam_worked"
+    return [{"code": c, "method": m} for c, m in found.items()]
+
+
+def mine_codes(html_text, url=""):
     """Ek page se codes. Priority: attrs/JSON (site ke declared codes).
-    Text tokens tab hi jab wo kaafi hon — junk pattern filter ke saath."""
+    Text tokens tab hi jab wo kaafi hon — junk pattern filter ke saath.
+    tenereteam par sirf 'Worked' test codes (site-specific)."""
+    if "tenereteam.com" in (url or "").lower():
+        return mine_tenereteam_codes(html_text)
     found = {}   # code -> method
 
     def add(code, method):
@@ -425,7 +461,7 @@ async def crawl4ai_reveal_pass(urls):
                         r = await crawler.arun(url=u, config=cfg)
                         html = getattr(r, "html", "") or ""
                         if r.success and html and not _is_challenge_page(html):
-                            out[u] = {c["code"]: c["method"] for c in mine_codes(html)}
+                            out[u] = {c["code"]: c["method"] for c in mine_codes(html, u)}
                             return
                     except Exception:
                         pass
@@ -436,71 +472,9 @@ async def crawl4ai_reveal_pass(urls):
 
 
 # ============================================================
-# CROSS-RUN TRACKING
-# ============================================================
-def _now():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def load_tracking(region):
-    path = os.path.join("data", f"tracking_{region}.json")
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
-
-
-def apply_tracking(rows, region):
-    """Har code par status (new/seen), first/last seen, times_seen.
-    data/tracking_<region>.json mein persist. Expired = pehle tha, is run
-    mein nahi mila (state mein rehta hai taake dobara aaye to 'seen' ho)."""
-    state = load_tracking(region)
-    now = _now()
-    found = {}
-    for r in rows:
-        b, c = r["brand"], r["code"]
-        found.setdefault(b, set()).add(c)
-        rec = state.setdefault(b, {})
-        e = rec.get(c)
-        if e:
-            r["status"] = "seen"
-            e["last_seen"] = now
-            e["times_seen"] = int(e.get("times_seen", 1)) + 1
-        else:
-            r["status"] = "new"
-            e = {"first_seen": now, "last_seen": now, "times_seen": 1}
-            rec[c] = e
-        e["method"] = r["method"]
-        e["via"] = r["via"]
-        e["source_url"] = r["source_url"]
-        r["first_seen"] = e["first_seen"]
-        r["last_seen"] = e["last_seen"]
-        r["times_seen"] = e["times_seen"]
-
-    summary = []
-    for b, rec in state.items():
-        f = found.get(b, set())
-        summary.append({
-            "brand": b, "found": len(f),
-            "new": sum(1 for r in rows if r["brand"] == b and r["status"] == "new"),
-            "seen": sum(1 for r in rows if r["brand"] == b and r["status"] == "seen"),
-            "expired": sum(1 for c in rec if c not in f),
-            "last_updated": now,
-        })
-    summary.sort(key=lambda s: s["brand"])
-    os.makedirs("data", exist_ok=True)
-    with open(os.path.join("data", f"tracking_{region}.json"), "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=1)
-    return summary
-
-
-# ============================================================
 # MAIN PIPELINE
 # ============================================================
-async def run(brands, region="uk"):
+async def run(brands):
     index = load_index()
     print(f"🗂️  Index: {len(index)} sites, {sum(len(m) for m in index.values())} stores\n")
 
@@ -559,7 +533,7 @@ async def run(brands, region="uk"):
             if not page_is_relevant(html_text, u, owner):
                 n_irrelevant += 1
                 continue
-        static_map[u] = mine_codes(cut_competitor_sections(html_text))
+        static_map[u] = mine_codes(cut_competitor_sections(html_text), u)
     if n_irrelevant:
         print(f"   🚫 {n_irrelevant} pages brand-relevant nahi the — mining skip")
 
@@ -586,7 +560,7 @@ async def run(brands, region="uk"):
             for u, h in fb.items():
                 if h:
                     reveal_map[u] = {c["code"]: c["method"]
-                                     for c in mine_codes(cut_competitor_sections(h))}
+                                     for c in mine_codes(cut_competitor_sections(h), u)}
 
     # ---- merge per brand ----
     rows = []
@@ -605,46 +579,26 @@ async def run(brands, region="uk"):
             rows.append({"brand": b, "code": c, "method": method,
                          "via": via, "source_url": src})
 
-    # ---- cross-run tracking (new vs seen vs expired) ----
-    summary = apply_tracking(rows, region)
-    new = sum(1 for r in rows if r["status"] == "new")
-    expired = sum(s["expired"] for s in summary)
-    print(f"🆕 new: {new} | ♻️  seen: {len(rows) - new} | ⌛ expired: {expired}")
-
-    # ---- save ----
-    fields = ["brand", "code", "method", "via", "source_url",
-              "status", "first_seen", "last_seen", "times_seen"]
+    # ---- save (har run fresh, sirf results.csv) ----
+    fields = ["brand", "code", "method", "via", "source_url"]
     with open(RESULTS_CSV, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    summary_file = f"summary_{region}.csv"
-    with open(summary_file, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["brand", "found", "new", "seen",
-                                          "expired", "last_updated"])
-        w.writeheader()
-        w.writerows(summary)
     total = len(rows)
     print(f"\n{'=' * 50}")
-    print(f"✅ DONE: {total} codes → {RESULTS_CSV} | "
-          f"{len(summary)} brands → {summary_file}")
+    print(f"✅ DONE: {total} codes → {RESULTS_CSV}")
     return rows
 
 
 if __name__ == "__main__":
-    # --region us  → output: results_us.csv (default uk)
-    # --file brands.txt  → brands file se list
-    region = "uk"
+    # --file brands.txt  → brands file se list (format: Name|brandurl)
     file_arg = None
     args = []
     argv = sys.argv[1:]
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a == "--region" and i + 1 < len(argv):
-            region = argv[i + 1].lower().strip()
-            i += 2
-            continue
         if a == "--file" and i + 1 < len(argv):
             file_arg = argv[i + 1]
             i += 2
@@ -655,12 +609,11 @@ if __name__ == "__main__":
         if a.strip():
             args.append(a)
         i += 1
-    RESULTS_CSV = f"results_{region}.csv"
     if file_arg:
         with open(file_arg, "r", encoding="utf-8-sig") as f:
             args = [l.strip() for l in f if l.strip()]
     if not args:
-        print('Usage: python page_scraper.py "commomy.com" ... | --file brands.txt')
+        print('Usage: python page_scraper.py "Shop LC|shoplc.com" ... | --file brands.txt')
         sys.exit(1)
 
-    asyncio.run(run(args, region))
+    asyncio.run(run(args))
