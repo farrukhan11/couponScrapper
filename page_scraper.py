@@ -455,14 +455,16 @@ async def crawl4ai_reveal_pass(urls):
                             cache_mode=CacheMode.BYPASS,
                             js_code=REVEAL_JS,
                             page_timeout=60000,
-                            delay_before_return_html=2.0,
+                            delay_before_return_html=3.0,
                             verbose=False,
                         )
                         r = await crawler.arun(url=u, config=cfg)
                         html = getattr(r, "html", "") or ""
                         if r.success and html and not _is_challenge_page(html):
-                            out[u] = {c["code"]: c["method"] for c in mine_codes(html, u)}
-                            return
+                            codes = {c["code"]: c["method"] for c in mine_codes(html, u)}
+                            if codes:
+                                out[u] = codes
+                                return
                     except Exception:
                         pass
                     if attempt < RETRIES:
