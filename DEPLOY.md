@@ -46,11 +46,56 @@ systemctl status couponscraper
 journalctl -u couponscraper -f
 ```
 
+## 5b. pm2 se run (systemd ke bajaye)
+```bash
+cd /var/www/couponScrapper
+pm2 start /var/www/couponScrapper/venv/bin/gunicorn \
+  --name couponscraper \
+  --cwd /var/www/couponScrapper \
+  --interpreter none \
+  -- -w 1 --threads 8 -b 127.0.0.1:8000 web_ui:app
+pm2 save
+pm2 logs couponscraper
+```
+> `-b 127.0.0.1:8000` = sirf local; nginx proxy karega. Seedha `IP:8000` chahiye to `-b 0.0.0.0:8000` karo.
+> pm2 restart: `pm2 restart couponscraper` · boot par auto-start: `pm2 startup` phir `pm2 save`.
+
+## 5c. nginx reverse proxy (optional)
+`/etc/nginx/sites-available/couponscraper`:
+```nginx
+server {
+    listen 80;
+    server_name coupons.tumharadomain.com;   # ya 81.17.100.61
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_read_timeout 3600s;    # lambi jobs
+        proxy_buffering off;         # live log polling
+    }
+}
+```
+```bash
+ln -s /etc/nginx/sites-available/couponscraper /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+```
+
 ## 6. Test
 ```bash
 curl -I http://127.0.0.1:8000
 ```
-Browser: `http://<server-ip>:8000` → shared password se login.
+Browser: `http://<server-ip>:8000` (ya nginx subdomain) → shared password se login.
+
+## 7. Pehla index build (ZAROORI)
+`data/stores_index.json` git mein commit nahi hota, isliye clone ke baad **ek dafa** index banao — warna scrape kuch nahi dega:
+```bash
+cd /var/www/couponScrapper && source venv/bin/activate
+python sitemap_crawler.py                 # ~10-20 min
+# ya UI ke "🔄 Refresh Store Index" button se
+```
 
 ## Manual run (service ke bina, test)
 ```bash

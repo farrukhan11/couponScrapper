@@ -34,6 +34,10 @@ if hasattr(sys.stdout, "reconfigure"):
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
+# root user / container / VM par Chrome sandbox fail hota hai -> no-sandbox
+LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled",
+               "--no-sandbox", "--disable-dev-shm-usage"]
+
 INDEX_FILE = "data/stores_index.json"
 OLD_INDEX_DIR = "data/sitemap_indexes"
 
@@ -200,13 +204,12 @@ def browser_fetch_batch(urls, origin):
         with sync_playwright() as p:
             try:
                 browser = p.chromium.launch(
-                    headless=headless,
-                    args=["--disable-blink-features=AutomationControlled"])
+                    headless=headless, args=LAUNCH_ARGS)
             except Exception:
                 browser = p.chromium.launch(
                     headless=headless,
                     executable_path=getattr(config, "CHROME_PATH", "") or "",
-                    args=["--disable-blink-features=AutomationControlled"])
+                    args=LAUNCH_ARGS)
             ctx = browser.new_context(viewport={"width": 1280, "height": 800})
             page = ctx.new_page()
             try:

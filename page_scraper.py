@@ -33,6 +33,10 @@ if hasattr(sys.stdout, "reconfigure"):
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
+# root user / container / VM par Chrome sandbox fail hota hai -> no-sandbox
+LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled",
+               "--no-sandbox", "--disable-dev-shm-usage"]
+
 RESULTS_CSV = "results.csv"
 MAX_URLS_PER_BRAND = 10     # exact pehle, phir partials
 MAX_BODY = 3_000_000        # 3MB cap per page
@@ -293,13 +297,12 @@ def browser_fetch_pages(urls_by_origin, retries=RETRIES):
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch(
-                headless=headless,
-                args=["--disable-blink-features=AutomationControlled"])
+                headless=headless, args=LAUNCH_ARGS)
         except Exception:
             browser = p.chromium.launch(
                 headless=headless,
                 executable_path=getattr(config, "CHROME_PATH", "") or "",
-                args=["--disable-blink-features=AutomationControlled"])
+                args=LAUNCH_ARGS)
         ctx = browser.new_context(viewport={"width": 1280, "height": 800})
         for origin, urls in urls_by_origin.items():
             page = ctx.new_page()
@@ -446,7 +449,9 @@ async def crawl4ai_reveal_pass(urls):
         return {}
     out = {}
     sem = asyncio.Semaphore(4)
-    bcfg = BrowserConfig(headless=True, verbose=False, enable_stealth=True, user_agent=UA)
+    bcfg = BrowserConfig(headless=True, verbose=False, enable_stealth=True,
+                         user_agent=UA, extra_args=["--no-sandbox",
+                                                    "--disable-dev-shm-usage"])
     async with AsyncWebCrawler(config=bcfg) as crawler:
         async def one(u):
             async with sem:
