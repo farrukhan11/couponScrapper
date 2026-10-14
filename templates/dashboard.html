@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coupon Scraper — Control Panel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🎫</div>
+    <h1>Coupon Scraper <span>sitemap router · reveal-click extraction</span></h1>
+    <a class="btn-logout" href="{{ url_for('logout') }}">Logout</a>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: form -->
+    <div class="card">
+      <label>Brands (naam ya domain — ek per line, max {{ max_brands }})</label>
+      <textarea id="brands" placeholder="Shop LC|shoplc.com&#10;mileseeygolf.com&#10;jo malone"></textarea>
+
+      <label class="chk"><input type="checkbox" id="headless" checked> Headless mode (server par ON rakhna)</label>
+
+      <button class="btn-run" id="runBtn" onclick="run()">▶ Run Scraper</button>
+      <button class="btn-idx" id="idxBtn" onclick="refreshIndex()">🔄 Refresh Store Index</button>
+      <div class="hint">💡 Brands paste karo → Run dabao. Live logs yahan aayenge, khatam hone par
+        results table + CSV download. Purane runs <b>History</b> se dobara download kar sakte ho.</div>
+      <div class="terms" id="jobMeta"></div>
+    </div>
+
+    <!-- RIGHT: logs + results -->
+    <div>
+      <div class="card">
+        <h2>Live Output <span id="stopWrap"></span></h2>
+        <div class="status" id="statusBar"><span class="dot"></span><span class="muted">Idle — job start karo</span></div>
+        <div class="term" id="term"><div class="l">> ready. Brands daal kar Run dabao.</div></div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <h2>Results <span class="dls" id="dls"></span></h2>
+        <div id="results"><div class="empty">Results yahan aayenge job complete hone par.</div></div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <h2>History <span class="dls"><button class="btn-dl" onclick="loadHistory()">↻ Refresh</button></span></h2>
+        <div id="history"><div class="empty">Koi purana run nahi.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

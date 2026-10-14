@@ -1,0 +1,17 @@
+[Unit]
+Description=Coupon Scraper Web UI
+After=network.target
+
+[Service]
+Type=simple
+# Apna Linux user yahan likho (jaise ubuntu ya root)
+User=ubuntu
+WorkingDirectory=/opt/couponScrapper
+# .env config.py khud load karta hai, lekin PORT/UI_* yahan bhi de sakte ho
+EnvironmentFile=-/opt/couponScrapper/.env
+ExecStart=/opt/couponScrapper/venv/bin/gunicorn -w 1 --threads 8 -b 0.0.0.0:8000 web_ui:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

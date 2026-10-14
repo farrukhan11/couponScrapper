@@ -13,6 +13,10 @@ data/
 *.json
 !urls.csv
 
+# Web UI
+jobs/
+.env
+
 # Others
 .DS_Store
 chrome_profile_search/

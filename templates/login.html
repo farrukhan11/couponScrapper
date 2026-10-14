@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coupon Scraper — Login</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+  <form class="login-card" method="post">
+    <div class="logo">🎫</div>
+    <h1>Coupon Scraper</h1>
+    <p class="sub">Team control panel</p>
+    {% if error %}<div class="login-err">{{ error }}</div>{% endif %}
+    <label>Password</label>
+    <input type="password" name="password" autofocus autocomplete="current-password" placeholder="Shared password">
+    <button class="btn-run" type="submit">Login</button>
+  </form>
+</body>
+</html>

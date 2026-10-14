@@ -26,6 +26,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+import config
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
@@ -194,16 +196,16 @@ def browser_fetch_batch(urls, origin):
     out = {}
     try:
         from playwright.sync_api import sync_playwright
+        headless = getattr(config, "HEADLESS", False)
         with sync_playwright() as p:
             try:
                 browser = p.chromium.launch(
-                    headless=False,
+                    headless=headless,
                     args=["--disable-blink-features=AutomationControlled"])
             except Exception:
-                import config
                 browser = p.chromium.launch(
-                    headless=False,
-                    executable_path=getattr(config, "CHROME_PATH", ""),
+                    headless=headless,
+                    executable_path=getattr(config, "CHROME_PATH", "") or "",
                     args=["--disable-blink-features=AutomationControlled"])
             ctx = browser.new_context(viewport={"width": 1280, "height": 800})
             page = ctx.new_page()

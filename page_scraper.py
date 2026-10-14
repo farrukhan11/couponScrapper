@@ -24,6 +24,7 @@ import sys
 import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config
 from brand_matcher import find_matches, load_index
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -288,16 +289,16 @@ def browser_fetch_pages(urls_by_origin, retries=RETRIES):
     Fail hui URLs ko isi origin page par reload ke saath retry karta hai."""
     out = {}
     from playwright.sync_api import sync_playwright
+    headless = getattr(config, "HEADLESS", False)
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch(
-                headless=False,
+                headless=headless,
                 args=["--disable-blink-features=AutomationControlled"])
         except Exception:
-            import config
             browser = p.chromium.launch(
-                headless=False,
-                executable_path=getattr(config, "CHROME_PATH", ""),
+                headless=headless,
+                executable_path=getattr(config, "CHROME_PATH", "") or "",
                 args=["--disable-blink-features=AutomationControlled"])
         ctx = browser.new_context(viewport={"width": 1280, "height": 800})
         for origin, urls in urls_by_origin.items():
