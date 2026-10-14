@@ -77,7 +77,8 @@ def login():
     err = None
     if request.method == "POST":
         pwd = (request.form.get("password") or "").strip()
-        if hmac.compare_digest(pwd, app.config["PASSWORD"]):
+        if hmac.compare_digest(pwd.encode("utf-8"),
+                               app.config["PASSWORD"].encode("utf-8")):
             session["auth"] = True
             return redirect(request.args.get("next") or url_for("index"))
         err = "Ghalat password"
