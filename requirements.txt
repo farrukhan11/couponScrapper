@@ -2,5 +2,6 @@ playwright
 httpx
 requests
 crawl4ai>=0.9
+patchright
 flask
 gunicorn

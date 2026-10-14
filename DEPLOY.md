@@ -97,6 +97,22 @@ python sitemap_crawler.py                 # ~10-20 min
 # ya UI ke "🔄 Refresh Store Index" button se
 ```
 
+### 7b. Datacenter IP + Cloudflare (important)
+Contabo ka server **datacenter IP** hai — Cloudflare wali sites (simplycodes, promopro,
+tenereteam, groupon) browser fetch ko block kar deti hain, isliye server par index
+**adhoora** ban sakta hai. Sabse reliable fix: **local machine (residential IP) par
+index banao aur server par copy karo**:
+```bash
+# local machine se:
+scp data/stores_index.json root@<server-ip>:/var/www/couponScrapper/data/stores_index.json
+```
+Yehi baat scraping par bhi lagti hai — server se kuch Cloudflare store-pages bhi block
+ho sakte hain (headless + datacenter IP). Options:
+- **Headful xvfb** (thoda behtar pass-rate): `SCRAPER_HEADLESS=0` + `xvfb-run` (dekho
+  "Headless vs headful" section).
+- **Firecrawl fallback**: `.env` mein `FIRECRAWL_API_KEY` set karo (residential proxy
+  infra use karta hai, blocked sitemaps/pages ke liye).
+
 ## Manual run (service ke bina, test)
 ```bash
 ./run.sh          # gunicorn 0.0.0.0:8000
@@ -113,6 +129,44 @@ python web_ui.py
   ExecStart=/usr/bin/xvfb-run -a /opt/couponScrapper/venv/bin/gunicorn -w 1 --threads 8 -b 0.0.0.0:8000 web_ui:app
   ```
   Ya UI ka "Headless mode" checkbox off karke chalayo (xvfb maujood ho to).
+
+## Stealth setup (Stage 1) — Cloudflare block kam karo (free)
+`.env`:
+```env
+SCRAPER_HEADLESS=0          # headful (xvfb) — headless se kam detect
+STEALTH_ENGINE=auto         # patchright -> playwright
+USE_PERSISTENT_PROFILE=1    # cf_clearance cookies bache
+BLOCK_MEDIA=1               # images/fonts block (bandwidth bachao)
+CHROME_PATH=/usr/bin/google-chrome   # real Chrome (recommended)
+```
+
+Install (real Chrome + patchright + system libs):
+```bash
+wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /usr/share/keyrings/google.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list
+apt update && apt install -y google-chrome-stable xvfb
+source venv/bin/activate
+python -m patchright install chromium
+python -m playwright install-deps chromium
+```
+
+pm2 ko **xvfb** ke andar chalao (headful ke liye):
+```bash
+pm2 delete couponscraper
+pm2 start /usr/bin/xvfb-run --name couponscraper --cwd /var/www/couponScrapper \
+  --interpreter none -- -a /var/www/couponScrapper/venv/bin/gunicorn \
+  -w 1 --threads 8 -b 0.0.0.0:8000 web_ui:app
+pm2 save && pm2 logs couponscraper
+```
+> Bacha hua data: `chrome_profile/` mein cookies save hote hain — server par ye folder delete na karo.
+
+## Proxy (Stage 2) — jab residential proxy le lo ($10 ~ 10GB)
+`.env`:
+```env
+PROXY_URL=http://user:pass@proxy-host:port
+```
+`pm2 restart couponscraper`. Code khud browser fallback + crawl4ai par proxy lagata hai.
+Bandwidth bachane ke liye proxy ko sirf blocked sites par chalaana behtar hai (agents selective mode add karenge).
 
 ## Security notes
 - Abhi **HTTP** hai — password network par clear-text jata hai. Zaroor:

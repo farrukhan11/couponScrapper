@@ -25,6 +25,7 @@ import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
+from browser_engine import browser_context
 from brand_matcher import find_matches, load_index
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -292,54 +293,45 @@ def browser_fetch_pages(urls_by_origin, retries=RETRIES):
     urls_by_origin: {origin: [urls]} → {url: html_text}
     Fail hui URLs ko isi origin page par reload ke saath retry karta hai."""
     out = {}
-    from playwright.sync_api import sync_playwright
-    headless = getattr(config, "HEADLESS", False)
-    with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch(
-                headless=headless, args=LAUNCH_ARGS)
-        except Exception:
-            browser = p.chromium.launch(
-                headless=headless,
-                executable_path=getattr(config, "CHROME_PATH", "") or "",
-                args=LAUNCH_ARGS)
-        ctx = browser.new_context(viewport={"width": 1280, "height": 800})
-        for origin, urls in urls_by_origin.items():
-            page = ctx.new_page()
-            try:
-                page.goto(origin, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(1500)
-            except Exception:
-                pass
-            js = """async (url) => {
-                const r = await fetch(url, {credentials: 'include'});
-                if (!r.ok) return 'STATUS:' + r.status;
-                const t = await r.text();
-                return t.length > %d ? t.slice(0, %d) : t;
-            }""" % (MAX_BODY, MAX_BODY)
-            pending = list(urls)
-            for attempt in range(retries + 1):
-                if not pending:
-                    break
-                still = []
-                for u in pending:
-                    try:
-                        txt = page.evaluate(js, u)
-                        if txt and not txt.startswith("STATUS:"):
-                            out[u] = txt
-                        else:
+    try:
+        with browser_context(headless=getattr(config, "HEADLESS", False)) as (ctx, browser, engine):
+            for origin, urls in urls_by_origin.items():
+                page = ctx.new_page()
+                try:
+                    page.goto(origin, wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(1500)
+                except Exception:
+                    pass
+                js = """async (url) => {
+                    const r = await fetch(url, {credentials: 'include'});
+                    if (!r.ok) return 'STATUS:' + r.status;
+                    const t = await r.text();
+                    return t.length > %d ? t.slice(0, %d) : t;
+                }""" % (MAX_BODY, MAX_BODY)
+                pending = list(urls)
+                for attempt in range(retries + 1):
+                    if not pending:
+                        break
+                    still = []
+                    for u in pending:
+                        try:
+                            txt = page.evaluate(js, u)
+                            if txt and not txt.startswith("STATUS:"):
+                                out[u] = txt
+                            else:
+                                still.append(u)
+                        except Exception:
                             still.append(u)
-                    except Exception:
-                        still.append(u)
-                pending = still
-                if pending and attempt < retries:
-                    try:
-                        page.reload(wait_until="domcontentloaded", timeout=30000)
-                        page.wait_for_timeout(1200)
-                    except Exception:
-                        pass
-            page.close()
-        browser.close()
+                    pending = still
+                    if pending and attempt < retries:
+                        try:
+                            page.reload(wait_until="domcontentloaded", timeout=30000)
+                            page.wait_for_timeout(1200)
+                        except Exception:
+                            pass
+                page.close()
+    except Exception as e:
+        print(f"   ⚠️ Browser fetch fail: {str(e)[:80]}")
     return out
 
 
@@ -449,9 +441,12 @@ async def crawl4ai_reveal_pass(urls):
         return {}
     out = {}
     sem = asyncio.Semaphore(4)
-    bcfg = BrowserConfig(headless=True, verbose=False, enable_stealth=True,
+    _proxy = getattr(config, "PROXY_URL", "") or ""
+    bcfg = BrowserConfig(headless=getattr(config, "HEADLESS", True),
+                         verbose=False, enable_stealth=True,
                          user_agent=UA, extra_args=["--no-sandbox",
-                                                    "--disable-dev-shm-usage"])
+                                                    "--disable-dev-shm-usage"],
+                         **({"proxy_config": _proxy} if _proxy else {}))
     async with AsyncWebCrawler(config=bcfg) as crawler:
         async def one(u):
             async with sem:

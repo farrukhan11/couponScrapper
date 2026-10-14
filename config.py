@@ -32,6 +32,24 @@ CHROME_PATH = os.environ.get(
 HEADLESS = os.environ.get("SCRAPER_HEADLESS", "0").strip().lower() in (
     "1", "true", "yes", "on")
 
+# Real Google Chrome ka channel (jaise "chrome"). CHROME_PATH na ho to ye use hoga.
+CHROME_CHANNEL = os.environ.get("CHROME_CHANNEL", "").strip()
+
+# Stealth engine: "auto" (patchright -> playwright), "patchright", "playwright"
+STEALTH_ENGINE = os.environ.get("STEALTH_ENGINE", "auto").strip().lower()
+
+# Cookies/Cloudflare clearance bachane ke liye persistent profile
+USE_PERSISTENT_PROFILE = os.environ.get("USE_PERSISTENT_PROFILE", "1").strip().lower() in (
+    "1", "true", "yes", "on")
+CHROME_PROFILE_DIR = os.environ.get("CHROME_PROFILE_DIR", "chrome_profile")
+
+# Images/fonts/media block (bandwidth bachao)
+BLOCK_MEDIA = os.environ.get("BLOCK_MEDIA", "1").strip().lower() in (
+    "1", "true", "yes", "on")
+
+# Residential proxy (jaise http://user:pass@host:port ya host:port). Khali = direct.
+PROXY_URL = os.environ.get("PROXY_URL", "").strip()
+
 # ============================================
 # FIRECRAWL FALLBACK (sirf BLOCKED pages ke liye — optional)
 # ============================================

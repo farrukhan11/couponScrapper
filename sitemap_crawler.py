@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import httpx
 
 import config
+from browser_engine import browser_context
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
@@ -199,18 +200,7 @@ def browser_fetch_batch(urls, origin):
     Return: {url: bytes}"""
     out = {}
     try:
-        from playwright.sync_api import sync_playwright
-        headless = getattr(config, "HEADLESS", False)
-        with sync_playwright() as p:
-            try:
-                browser = p.chromium.launch(
-                    headless=headless, args=LAUNCH_ARGS)
-            except Exception:
-                browser = p.chromium.launch(
-                    headless=headless,
-                    executable_path=getattr(config, "CHROME_PATH", "") or "",
-                    args=LAUNCH_ARGS)
-            ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+        with browser_context(headless=getattr(config, "HEADLESS", False)) as (ctx, browser, engine):
             page = ctx.new_page()
             try:
                 page.goto(origin, wait_until="domcontentloaded", timeout=30000)
@@ -239,9 +229,8 @@ def browser_fetch_batch(urls, origin):
                         fail += 1
                 done = min(i + BATCH, len(urls))
                 print(f"      {done}/{len(urls)} fetched (ok={ok} fail={fail})")
-            browser.close()
     except Exception as e:
-        print(f"   ⚠️ Browser fetch fail: {str(e)[:60]}")
+        print(f"   ⚠️ Browser fetch fail: {str(e)[:80]}")
     return out
 
 
