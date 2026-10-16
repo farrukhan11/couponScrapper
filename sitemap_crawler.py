@@ -104,6 +104,35 @@ def join_key(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+# Ek store ke multiple URLs (jaise /stores/x review aur /stores/x/coupons) mein
+# coupon-wale ko priority — warna reviews page scrape hota hai (0 codes).
+COUPON_URL_HINTS = ("coupons", "coupon-codes", "coupon-code", "voucher-codes",
+                    "-voucher", "vouchers", "/deals", "-deals", "discount-codes",
+                    "-discount-code", "promo-codes", "promo-code", "/offers",
+                    "-offers", "voucher-code")
+BAD_URL_HINTS = ("/reviews", "-reviews", "rating", "/blog", "/about", "/contact")
+
+
+def url_priority(url):
+    low = (url or "").lower()
+    score = low.count("/")
+    for h in COUPON_URL_HINTS:
+        if h in low:
+            score += 10
+    for b in BAD_URL_HINTS:
+        if b in low:
+            score -= 25
+    return score
+
+
+def add_best(mapping, slug, url):
+    """slug key par sabse acche (coupon) URL ko rakho."""
+    key = join_key(slug)
+    cur = mapping.get(key)
+    if cur is None or url_priority(url) > url_priority(cur[1]):
+        mapping[key] = [slug, url]
+
+
 def store_slug(url, domain):
     """Store URL se brand slug nikalo:
     /store/goonzquad.com        → goonzquad
@@ -368,7 +397,7 @@ def build_index(only_sites=None):
             for url in data.get("brand_urls", []) + data.get("root_slug_urls", []):
                 slug = store_slug(url, dom)
                 if slug:
-                    mapping.setdefault(join_key(slug), [slug, url])
+                    add_best(mapping, slug, url)
             if mapping:
                 index[dom] = mapping
 
@@ -385,7 +414,7 @@ def build_index(only_sites=None):
         for url in locs:
             slug = store_slug(url, dom)
             if slug:
-                mapping.setdefault(join_key(slug), [slug, url])
+                add_best(mapping, slug, url)
         if mapping:
             index[dom] = mapping
             print(f"   📦 {len(mapping)} unique stores")

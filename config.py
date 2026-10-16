@@ -51,6 +51,14 @@ BLOCK_MEDIA = os.environ.get("BLOCK_MEDIA", "1").strip().lower() in (
 PROXY_URL = os.environ.get("PROXY_URL", "").strip()
 
 # ============================================
+# BRAND-SITE INTEL (sale / shipping / newsletter)
+# ============================================
+REGION = os.environ.get("SCRAPER_REGION", "us").strip().lower()
+SCRAPE_BRAND_SITE = os.environ.get("SCRAPE_BRAND_SITE", "1").strip().lower() in (
+    "1", "true", "yes", "on")
+SALE_LIMIT = int(os.environ.get("SALE_LIMIT", "250") or "250")
+
+# ============================================
 # FIRECRAWL FALLBACK (sirf BLOCKED pages ke liye — optional)
 # ============================================
 # https://firecrawl.dev se key lo. Khali = sirf apna infra (free).

@@ -20,6 +20,7 @@ import html as html_mod
 import os
 import re
 import sys
+from datetime import datetime
 
 import httpx
 
@@ -27,6 +28,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from browser_engine import browser_context
 from brand_matcher import find_matches, load_index
+from brand_site import scrape_brand_site
+from deal_miner import mine_deals
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
@@ -39,6 +42,13 @@ LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled",
                "--no-sandbox", "--disable-dev-shm-usage"]
 
 RESULTS_CSV = "results.csv"
+OFFERS_CSV = "offers.csv"
+
+# Unified offers schema (coupon + deal + sale + shipping + newsletter)
+OFFER_FIELDS = ["brand", "type", "title", "offer", "url", "percent_off",
+                "amount", "price_original", "price_sale", "details",
+                "source_url", "method", "via", "region", "found_at"]
+
 MAX_URLS_PER_BRAND = 10     # exact pehle, phir partials
 MAX_BODY = 3_000_000        # 3MB cap per page
 REVEAL_SKIP_THRESHOLD = 12  # itne codes static se mil gaye to crawl4ai skip
@@ -433,7 +443,7 @@ REVEAL_JS = r"""
 
 async def crawl4ai_reveal_pass(urls):
     """crawl4ai: stealth browser + REVEAL_JS (buttons auto-click) → final HTML.
-    Return: {url: {code: method}}"""
+    Return: {url: {"codes": {code: method}, "deals": [{title, url}]}}"""
     try:
         from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
     except Exception as e:
@@ -462,9 +472,11 @@ async def crawl4ai_reveal_pass(urls):
                         r = await crawler.arun(url=u, config=cfg)
                         html = getattr(r, "html", "") or ""
                         if r.success and html and not _is_challenge_page(html):
+                            clean = cut_competitor_sections(html)
                             codes = {c["code"]: c["method"] for c in mine_codes(html, u)}
-                            if codes:
-                                out[u] = codes
+                            deals = mine_deals(clean, u)
+                            if codes or deals:
+                                out[u] = {"codes": codes, "deals": deals}
                                 return
                     except Exception:
                         pass
@@ -477,7 +489,7 @@ async def crawl4ai_reveal_pass(urls):
 # ============================================================
 # MAIN PIPELINE
 # ============================================================
-async def run(brands):
+async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
     index = load_index()
     print(f"🗂️  Index: {len(index)} sites, {sum(len(m) for m in index.values())} stores\n")
 
@@ -562,11 +574,47 @@ async def run(brands):
             fb = await asyncio.to_thread(browser_fetch_pages, by_origin)
             for u, h in fb.items():
                 if h:
-                    reveal_map[u] = {c["code"]: c["method"]
-                                     for c in mine_codes(cut_competitor_sections(h), u)}
+                    clean = cut_competitor_sections(h)
+                    reveal_map[u] = {
+                        "codes": {c["code"]: c["method"] for c in mine_codes(h, u)},
+                        "deals": mine_deals(clean, u)}
 
-    # ---- merge per brand ----
-    rows = []
+    # ---- url -> brand (deals attribution ke liye) ----
+    url_brand = {}
+    for b, lst in plan.items():
+        for _, u in lst:
+            url_brand.setdefault(u, b)
+
+    # ---- coupon sites se DEALS (title + link) ----
+    deals_by_brand = {}
+    seen_deals = set()
+
+    def add_deal(owner, title, link, page):
+        key = (owner, title.lower(), link)
+        if key in seen_deals:
+            return
+        seen_deals.add(key)
+        deals_by_brand.setdefault(owner, []).append(
+            {"title": title, "url": link, "page": page})
+
+    # static HTML se
+    for u in all_urls:
+        html_text = html_map.get(u)
+        if not html_text:
+            continue
+        owner = url_brand.get(u, u)
+        for d in mine_deals(cut_competitor_sections(html_text), u):
+            add_deal(owner, d["title"], d["url"], u)
+    # reveal (JS-rendered) HTML se
+    for u, payload in reveal_map.items():
+        owner = url_brand.get(u, u)
+        for d in (payload or {}).get("deals", []):
+            add_deal(owner, d["title"], d["url"], u)
+
+    # ---- merge per brand (codes + deals) ----
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rows = []      # results.csv (codes)
+    offers = []    # offers.csv (unified)
     print()
     for b, lst in plan.items():
         codes = {}   # code -> (method, source_url, via)
@@ -574,29 +622,82 @@ async def run(brands):
             for c in static_map.get(u, []):
                 if c["code"] not in codes:
                     codes[c["code"]] = (c["method"], u, "static")
-            for c, method in reveal_map.get(u, {}).items():
+            for c, method in (reveal_map.get(u) or {}).get("codes", {}).items():
                 if c not in codes:
                     codes[c] = (method, u, "crawl4ai")
-        print(f"🎫 {b}: {len(codes)} codes")
+        n_deals = len(deals_by_brand.get(b, []))
+        print(f"🎫 {b}: {len(codes)} codes, {n_deals} deals")
         for c, (method, src, via) in codes.items():
             rows.append({"brand": b, "code": c, "method": method,
                          "via": via, "source_url": src})
+            offers.append({"brand": b, "type": "coupon", "offer": c,
+                           "method": method, "via": via, "source_url": src,
+                           "region": region, "found_at": now})
+        for d in deals_by_brand.get(b, []):
+            offers.append({"brand": b, "type": "deal", "title": d["title"],
+                           "url": d["url"], "source_url": d["page"],
+                           "method": "html", "via": "static",
+                           "region": region, "found_at": now})
 
-    # ---- save (har run fresh, sirf results.csv) ----
+    # ---- brand ki apni site: sale / shipping / newsletter ----
+    if brand_site:
+        print("\n🏬 Brand sites (sale / shipping / newsletter)...")
+        for b in plan:
+            try:
+                bs_rows = await asyncio.to_thread(
+                    scrape_brand_site, b, region, sale_limit)
+            except Exception:
+                bs_rows = []
+            for r in bs_rows:
+                r["brand"] = b
+                r["region"] = region
+                r["found_at"] = now
+                offers.append(r)
+            print(f"   🏬 {b}: {len(bs_rows)} brand-site offers")
+
+    # ---- type filter (optional) ----
+    if types:
+        offers = [o for o in offers if o.get("type") in types]
+
+    def _safe_write(path, fnames, data):
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fnames, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(data)
+            return path
+        except PermissionError:
+            fallback = path.rsplit(".", 1)[0] + "_latest.csv"
+            print(f"⚠️ Warning: {path} is locked (possibly open in another program). Writing to {fallback} instead.")
+            with open(fallback, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fnames, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(data)
+            return fallback
+
+    # ---- save results.csv (codes) ----
     fields = ["brand", "code", "method", "via", "source_url"]
-    with open(RESULTS_CSV, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-        w.writeheader()
-        w.writerows(rows)
-    total = len(rows)
+    out_results = _safe_write(RESULTS_CSV, fields, rows)
+
+    # ---- save offers.csv (unified) ----
+    out_offers = _safe_write(OFFERS_CSV, OFFER_FIELDS, offers)
+
+    counts = {}
+    for o in offers:
+        counts[o["type"]] = counts.get(o["type"], 0) + 1
     print(f"\n{'=' * 50}")
-    print(f"✅ DONE: {total} codes → {RESULTS_CSV}")
-    return rows
+    print(f"✅ DONE: {len(rows)} codes → {out_results}")
+    print(f"✅ DONE: {len(offers)} offers → {out_offers}  {counts}")
+    return offers
 
 
 if __name__ == "__main__":
     # --file brands.txt  → brands file se list (format: Name|brandurl)
     file_arg = None
+    region = getattr(config, "REGION", "us")
+    brand_site = getattr(config, "SCRAPE_BRAND_SITE", True)
+    sale_limit = getattr(config, "SALE_LIMIT", 250)
+    types = None
     args = []
     argv = sys.argv[1:]
     i = 0
@@ -605,6 +706,29 @@ if __name__ == "__main__":
         if a == "--file" and i + 1 < len(argv):
             file_arg = argv[i + 1]
             i += 2
+            continue
+        if a == "--region" and i + 1 < len(argv):
+            region = argv[i + 1].strip().lower()
+            i += 2
+            continue
+        if a == "--sale-limit" and i + 1 < len(argv):
+            try:
+                sale_limit = int(argv[i + 1])
+            except Exception:
+                pass
+            i += 2
+            continue
+        if a == "--types" and i + 1 < len(argv):
+            types = {t.strip() for t in argv[i + 1].split(",") if t.strip()}
+            i += 2
+            continue
+        if a == "--no-brand-site":
+            brand_site = False
+            i += 1
+            continue
+        if a == "--brand-site":
+            brand_site = True
+            i += 1
             continue
         if a.startswith("--"):
             i += 1
@@ -616,7 +740,10 @@ if __name__ == "__main__":
         with open(file_arg, "r", encoding="utf-8-sig") as f:
             args = [l.strip() for l in f if l.strip()]
     if not args:
-        print('Usage: python page_scraper.py "Shop LC|shoplc.com" ... | --file brands.txt')
+        print('Usage: python page_scraper.py "Shop LC|shoplc.com" ... | '
+              '--file brands.txt [--region us|uk] [--no-brand-site] '
+              '[--sale-limit 250] [--types coupon,deal,sale,shipping,newsletter]')
         sys.exit(1)
 
-    asyncio.run(run(args))
+    asyncio.run(run(args, region=region, brand_site=brand_site,
+                    sale_limit=sale_limit, types=types))
