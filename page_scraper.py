@@ -26,6 +26,7 @@ import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
+import renderer
 from browser_engine import browser_context
 from brand_matcher import find_matches, load_index
 from brand_site import scrape_brand_site
@@ -198,10 +199,16 @@ def mine_codes(html_text, url=""):
         add(m, "html_attr")
 
     # 2) JSON/JS keys
+    _code_keys = (r'(?:code|coupon_code|promo_code|voucher_code|couponCode'
+                  r'|promoCode|voucherCode|couponcode)')
     for m in re.findall(
-            r'["\'](?:code|coupon_code|promo_code|voucher_code|couponCode'
-            r'|promoCode|voucherCode|couponcode)["\']\s*[:=]\s*["\']'
+            r'["\']' + _code_keys + r'["\']\s*[:=]\s*["\']'
             r'([^"\']{3,25})["\']', html_text):
+        add(m, "html_json")
+    # 2b) escaped JSON (embedded in JS strings: \"code\":\"FIRST30\")
+    for m in re.findall(
+            r'\\["\']' + _code_keys + r'\\["\']\s*[:=]\s*\\["\']'
+            r'([^"\\]{3,25})\\["\']', html_text):
         add(m, "html_json")
 
     strong = len(found)
@@ -214,6 +221,15 @@ def mine_codes(html_text, url=""):
         for m in re.findall(r"\b[A-Za-z0-9][A-Za-z0-9\-_]{3,19}\b", text):
             if re.search(r"\d", m) and _strict_text_code(m.upper()):
                 add(m, "text")
+
+    # 4) suffix-duplicate cleanup: agar "IRST30" aur "FIRST30" dono hain to
+    # chhota (truncated) wala drop karo.
+    if len(found) > 1:
+        codes = set(found)
+        drop = {a for a in codes for b in codes
+                if a != b and len(a) < len(b) and b.endswith(a)}
+        for d in drop:
+            found.pop(d, None)
 
     return [{"code": c, "method": m} for c, m in found.items()]
 
@@ -346,20 +362,31 @@ def browser_fetch_pages(urls_by_origin, retries=RETRIES):
 
 
 def fetch_pages_for_brands(url_list):
-    """Saari URLs: httpx pass pehle; blocked origins browser batch mein."""
+    """httpx fast pass; blocked/SPA/challenge pages → apna renderer (direct nav)."""
     html_map = {}
-    blocked = {}
+    blocked = []
     for url in url_list:
-        origin = "/".join(url.split("/")[:3])
         txt = fetch_httpx(url)
         if txt and not _is_challenge_page(txt):
             html_map[url] = txt
         else:
-            blocked.setdefault(origin, []).append(url)
+            blocked.append(url)
     if blocked:
-        print(f"   🌐 Browser fallback: {sum(len(v) for v in blocked.values())} URLs "
-              f"({len(blocked)} origins)")
-        html_map.update(browser_fetch_pages(blocked))
+        print(f"   🌐 Renderer fallback: {len(blocked)} URLs "
+              f"(direct nav + challenge wait)...")
+        rendered = renderer.render_many(blocked)
+        for u, r in rendered.items():
+            h = r.get("html") or ""
+            if h and not _is_challenge_page(h):
+                html_map[u] = h
+        # last resort: purana browser batch (jo abhi bhi missing hain)
+        still = [u for u in blocked if u not in html_map]
+        if still:
+            print(f"   ↻ Renderer miss: {len(still)} URLs — old browser fallback")
+            by_origin = {}
+            for u in still:
+                by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
+            html_map.update(browser_fetch_pages(by_origin))
     return html_map
 
 
@@ -486,6 +513,47 @@ async def crawl4ai_reveal_pass(urls):
     return out
 
 
+async def render_reveal_pass(urls):
+    """Apna renderer: pehle direct render (no reveal); kam mile to reveal pass.
+    Return: {url: {"codes": {code: method}, "deals": [{title, url}]}}"""
+    if not urls:
+        return {}
+    out = {}
+    incomplete = []
+
+    # Pass 1: direct render — zyadatar codes DOM/JSON mein hote hain
+    rendered = await asyncio.to_thread(renderer.render_many, urls, reveal=False)
+    for u, r in rendered.items():
+        html = r.get("html") or ""
+        if not html or _is_challenge_page(html):
+            continue
+        clean = cut_competitor_sections(html)
+        codes = {c["code"]: c["method"] for c in mine_codes(html, u)}
+        deals = mine_deals(clean, u)
+        if codes or deals:
+            out[u] = {"codes": codes, "deals": deals}
+        if len(codes) < 3 and not deals:
+            incomplete.append(u)
+
+    # Pass 2: reveal sirf un pages par jahan kam mila
+    if incomplete:
+        rev = await asyncio.to_thread(renderer.render_many, incomplete, reveal=True)
+        for u, r in rev.items():
+            html = r.get("html") or ""
+            if not html or _is_challenge_page(html):
+                continue
+            clean = cut_competitor_sections(html)
+            codes = {c["code"]: c["method"] for c in mine_codes(html, u)}
+            deals = mine_deals(clean, u)
+            prev = out.get(u, {})
+            merged_codes = dict(prev.get("codes", {}))
+            merged_codes.update(codes)
+            merged_deals = prev.get("deals", []) + deals
+            if merged_codes or merged_deals:
+                out[u] = {"codes": merged_codes, "deals": merged_deals}
+    return out
+
+
 # ============================================================
 # MAIN PIPELINE
 # ============================================================
@@ -552,22 +620,26 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
     if n_irrelevant:
         print(f"   🚫 {n_irrelevant} pages brand-relevant nahi the — mining skip")
 
-    # ---- crawl4ai reveal pass ----
+    # ---- reveal pass (apna renderer; crawl4ai secondary fallback) ----
     # Saari EXACT URLs (JS-render asli coupon grid) + low-static pages.
     exact_urls = {u for u, t in url_tier.items() if t == "exact"}
     candidates = [u for u in all_urls
                   if u in static_map and
                   (u in exact_urls or len(static_map[u]) < REVEAL_SKIP_THRESHOLD)]
-    print(f"\n🤖 crawl4ai reveal pass: {len(candidates)} pages "
-          f"(JS render + buttons auto-click)...")
+    print(f"\n🖥️  render reveal pass: {len(candidates)} pages "
+          f"(direct nav + challenge wait + buttons auto-click)...")
     reveal_map = {}
     if candidates:
-        reveal_map = await crawl4ai_reveal_pass(candidates)
-        ok = len(reveal_map)
-        print(f"   🤖 crawl4ai: {ok}/{len(candidates)} pages")
+        reveal_map = await render_reveal_pass(candidates)
+        print(f"   🖥️  renderer: {len(reveal_map)}/{len(candidates)} pages")
         missed = [u for u in candidates if u not in reveal_map]
         if missed:
-            print(f"   🌐 crawl4ai fail → real-chrome fallback: {len(missed)} URLs")
+            print(f"   🤖 renderer miss → crawl4ai fallback: {len(missed)} URLs")
+            c4 = await crawl4ai_reveal_pass(missed)
+            reveal_map.update(c4)
+            missed = [u for u in missed if u not in reveal_map]
+        if missed:
+            print(f"   🌐 still missing → real-chrome fallback: {len(missed)} URLs")
             by_origin = {}
             for u in missed:
                 by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)

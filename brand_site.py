@@ -74,7 +74,7 @@ def _client():
                         headers={"User-Agent": UA})
 
 
-def _get(client, url, retries=1):
+def _get(client, url, retries=2):
     for attempt in range(retries + 1):
         try:
             r = client.get(url)
@@ -129,6 +129,7 @@ def _to_float(v):
 def _shopify_sale(client, domain, sale_limit):
     best = None
     page, scanned = 1, 0
+    retried = False
     while scanned < sale_limit and page <= 10:
         txt = _get(client, f"https://{domain}/products.json?limit=250&page={page}")
         if not txt:
@@ -138,6 +139,11 @@ def _shopify_sale(client, domain, sale_limit):
         except Exception:
             break
         if not products:
+            # page 1 empty ho (transient rate-limit) to ek retry
+            if page == 1 and not retried:
+                retried = True
+                time.sleep(1.5)
+                continue
             break
         for p in products:
             scanned += 1

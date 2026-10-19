@@ -37,6 +37,16 @@ GENERIC_PREFIX_RE = re.compile(
     r"^(top|best|verified|storewide|deal|offer|code|coupon|today|"
     r"exclusive|new|sitewide|extra|free)", re.I)
 
+# Competitor dash form: "Alphalete Athletics - Offers 10% off ..."
+COMPETITOR_DASH_RE = re.compile(
+    r"^[A-Z][A-Za-z0-9'&.\-]*(?:\s+[A-Z][A-Za-z0-9'&.\-]*){1,4}\s+[-–—]\s+"
+    r"[^.]{0,60}?\d{1,3}\s*%\s*off", re.I)
+
+# Page instructions / UI junk jo deal nahi hain
+JUNK_DEAL_RE = re.compile(
+    r"(successfully applied|verify the discount|before completing payment"
+    r"|free shipping\s+yes\b|discount successfully|was successfully)", re.I)
+
 # Nav/footer junk jinhe deal na manein (browsing links)
 JUNK_RE = re.compile(
     r"(promo\s+codes?|discount\s+codes?|voucher\s+codes?|coupon\s+codes?"
@@ -56,16 +66,19 @@ def _clean(s):
     s = re.sub(r"<[^>]+>", " ", s or "")
     s = html_mod.unescape(s)
     s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"^[^A-Za-z0-9]+", "", s)   # leading emoji/symbols hatao
     return s
 
 
 def _is_deal(title):
     if not title or not (6 <= len(title) <= MAX_TITLE):
         return False
-    if JUNK_RE.search(title):
+    if JUNK_RE.search(title) or JUNK_DEAL_RE.search(title):
         return False
     m = COMPETITOR_DEAL_RE.match(title)
     if m and not GENERIC_PREFIX_RE.match(m.group(1)):
+        return False
+    if COMPETITOR_DASH_RE.match(title):
         return False
     return bool(DEAL_RE.search(title) or SUBSCRIBE_RE.search(title))
 

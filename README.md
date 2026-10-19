@@ -115,6 +115,24 @@ Columns: `brand, coupons, deals, sale, shipping, newsletter, max_sale_off, shipp
 
 ---
 
+## 5b. Renderer tool (apna "Firecrawl-like", no proxy)
+
+`renderer.py` — asli Chrome se page **render** karta hai (JS/SPA/Cloudflare),
+apne aap:
+- **Direct navigation** (origin+fetch nahi)
+- **Warm-up**: 403/challenge par pehle homepage visit → `cf_clearance` set
+- **Challenge wait** + SPA detect + reveal buttons
+- **Cache** (`.render_cache/`)
+
+Standalone test:
+```powershell
+python renderer.py "https://simplycodes.com/store/shopathluna.com"
+```
+Env tuning (`.env`): `RENDER_TIMEOUT`, `RENDER_WAIT`, `RENDER_CHALLENGE_WAIT`, `RENDER_CACHE_TTL`.
+
+> Scraper isko automatically use karta hai: httpx block/403/SPA → renderer.
+> Isi se simplycodes (Cloudflare) aur couponreals (SPA) bina proxy ke scrape hote hain.
+
 ## 6. Web UI (optional)
 
 ```powershell
@@ -144,7 +162,8 @@ CHROME_PATH=/usr/bin/google-chrome
 ```
 brands file
    │
-   ├─ coupon sites: brand → store page match → fetch → reveal-click
+   ├─ coupon sites: brand → store page match (slug + shop<brand>)
+   │                 → httpx → RENDERER (direct nav + challenge wait)
    │                 → mine_codes (HTML attrs / JSON / text)  = type=coupon
    │                 → mine_deals (title + link)              = type=deal
    │

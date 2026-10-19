@@ -17,6 +17,9 @@ data/
 jobs/
 .env
 
+# Renderer cache
+.render_cache/
+
 # Others
 .DS_Store
 chrome_profile_search/

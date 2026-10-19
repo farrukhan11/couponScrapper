@@ -114,6 +114,12 @@ def _score(bkey, ikey):
         return None, 0
     if bkey == ikey:
         return "exact", 100
+    # Alternate brand domains: shop<brand>, the<brand>, get<brand>, my<brand>
+    # (jaise simplycodes par "shopathluna" = athluna)
+    if len(bkey) >= 4 and len(ikey) >= 4:
+        for pre in ("shop", "the", "get", "my"):
+            if ikey == pre + bkey or bkey == pre + ikey:
+                return "prefix", 78
     # prefix dono taraf (min 4) — topper/betopper jaisa suffix-fuzzy yahan nahi aata.
     # Chhota key bade key ka 60% ho warna generic prefix (inmotion ⊂ inmotionhosting) noise deta hai.
     if len(bkey) >= 4 and len(ikey) >= 4:
