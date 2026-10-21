@@ -361,7 +361,7 @@ def browser_fetch_pages(urls_by_origin, retries=RETRIES):
     return out
 
 
-def fetch_pages_for_brands(url_list):
+def fetch_pages_for_brands(url_list, render=True):
     """httpx fast pass; blocked/SPA/challenge pages → apna renderer (direct nav)."""
     html_map = {}
     blocked = []
@@ -371,7 +371,8 @@ def fetch_pages_for_brands(url_list):
             html_map[url] = txt
         else:
             blocked.append(url)
-    if blocked:
+    still = list(blocked)
+    if blocked and render:
         print(f"   🌐 Renderer fallback: {len(blocked)} URLs "
               f"(direct nav + challenge wait)...")
         rendered = renderer.render_many(blocked)
@@ -379,14 +380,16 @@ def fetch_pages_for_brands(url_list):
             h = r.get("html") or ""
             if h and not _is_challenge_page(h):
                 html_map[u] = h
-        # last resort: purana browser batch (jo abhi bhi missing hain)
         still = [u for u in blocked if u not in html_map]
         if still:
             print(f"   ↻ Renderer miss: {len(still)} URLs — old browser fallback")
-            by_origin = {}
-            for u in still:
-                by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
-            html_map.update(browser_fetch_pages(by_origin))
+    elif blocked:
+        print(f"   ⏭️  Renderer off — old browser fallback: {len(blocked)} URLs")
+    if still:
+        by_origin = {}
+        for u in still:
+            by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
+        html_map.update(browser_fetch_pages(by_origin))
     return html_map
 
 
@@ -513,11 +516,13 @@ async def crawl4ai_reveal_pass(urls):
     return out
 
 
-async def render_reveal_pass(urls):
+async def render_reveal_pass(urls, enabled=True, limit=None):
     """Apna renderer: pehle direct render (no reveal); kam mile to reveal pass.
     Return: {url: {"codes": {code: method}, "deals": [{title, url}]}}"""
-    if not urls:
+    if not urls or not enabled:
         return {}
+    if limit:
+        urls = urls[:limit]
     out = {}
     incomplete = []
 
@@ -557,7 +562,8 @@ async def render_reveal_pass(urls):
 # ============================================================
 # MAIN PIPELINE
 # ============================================================
-async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
+async def run(brands, region="us", brand_site=True, sale_limit=250, types=None,
+              render=True, render_limit=None):
     index = load_index()
     print(f"🗂️  Index: {len(index)} sites, {sum(len(m) for m in index.values())} stores\n")
 
@@ -580,7 +586,7 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
                 all_urls.append(u)
 
     print(f"\n🌐 Fetching {len(all_urls)} pages (httpx → browser fallback)...")
-    html_map = await asyncio.to_thread(fetch_pages_for_brands, all_urls)
+    html_map = await asyncio.to_thread(fetch_pages_for_brands, all_urls, render)
     print(f"   ✅ {len(html_map)}/{len(all_urls)} pages mile")
 
     # ---- missing pages: fresh browser se ek retry pass ----
@@ -621,16 +627,16 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
         print(f"   🚫 {n_irrelevant} pages brand-relevant nahi the — mining skip")
 
     # ---- reveal pass (apna renderer; crawl4ai secondary fallback) ----
-    # Saari EXACT URLs (JS-render asli coupon grid) + low-static pages.
-    exact_urls = {u for u, t in url_tier.items() if t == "exact"}
+    # Sirf woh pages jahan static mining se kam codes mile (< threshold).
     candidates = [u for u in all_urls
-                  if u in static_map and
-                  (u in exact_urls or len(static_map[u]) < REVEAL_SKIP_THRESHOLD)]
+                  if u in static_map and len(static_map[u]) < REVEAL_SKIP_THRESHOLD]
+    if render_limit:
+        candidates = candidates[:render_limit]
     print(f"\n🖥️  render reveal pass: {len(candidates)} pages "
           f"(direct nav + challenge wait + buttons auto-click)...")
     reveal_map = {}
-    if candidates:
-        reveal_map = await render_reveal_pass(candidates)
+    if candidates and render:
+        reveal_map = await render_reveal_pass(candidates, enabled=render)
         print(f"   🖥️  renderer: {len(reveal_map)}/{len(candidates)} pages")
         missed = [u for u in candidates if u not in reveal_map]
         if missed:
@@ -770,6 +776,8 @@ if __name__ == "__main__":
     brand_site = getattr(config, "SCRAPE_BRAND_SITE", True)
     sale_limit = getattr(config, "SALE_LIMIT", 250)
     types = None
+    render = True
+    render_limit = None
     args = []
     argv = sys.argv[1:]
     i = 0
@@ -802,6 +810,17 @@ if __name__ == "__main__":
             brand_site = True
             i += 1
             continue
+        if a == "--no-render":
+            render = False
+            i += 1
+            continue
+        if a == "--render-limit" and i + 1 < len(argv):
+            try:
+                render_limit = int(argv[i + 1])
+            except Exception:
+                pass
+            i += 2
+            continue
         if a.startswith("--"):
             i += 1
             continue
@@ -814,8 +833,10 @@ if __name__ == "__main__":
     if not args:
         print('Usage: python page_scraper.py "Shop LC|shoplc.com" ... | '
               '--file brands.txt [--region us|uk] [--no-brand-site] '
-              '[--sale-limit 250] [--types coupon,deal,sale,shipping,newsletter]')
+              '[--sale-limit 250] [--types coupon,deal,sale,shipping,newsletter] '
+              '[--no-render] [--render-limit N]')
         sys.exit(1)
 
     asyncio.run(run(args, region=region, brand_site=brand_site,
-                    sale_limit=sale_limit, types=types))
+                    sale_limit=sale_limit, types=types,
+                    render=render, render_limit=render_limit))

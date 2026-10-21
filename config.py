@@ -42,6 +42,8 @@ STEALTH_ENGINE = os.environ.get("STEALTH_ENGINE", "auto").strip().lower()
 USE_PERSISTENT_PROFILE = os.environ.get("USE_PERSISTENT_PROFILE", "1").strip().lower() in (
     "1", "true", "yes", "on")
 CHROME_PROFILE_DIR = os.environ.get("CHROME_PROFILE_DIR", "chrome_profile")
+# Renderer ka alag profile (purane tabs/session restore se bachne ke liye)
+RENDER_PROFILE_DIR = os.environ.get("RENDER_PROFILE_DIR", ".render_profile")
 
 # Images/fonts/media block (bandwidth bachao)
 BLOCK_MEDIA = os.environ.get("BLOCK_MEDIA", "1").strip().lower() in (

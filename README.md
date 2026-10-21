@@ -76,6 +76,8 @@ python page_scraper.py "Shop LC|shoplc.com" "Zinus|zinus.com" --region us
 | `--no-brand-site` | Sirf coupon sites (brand site skip) — fast |
 | `--sale-limit 250` | Brand site par kitne products scan |
 | `--types coupon,deal,sale,shipping,newsletter` | Sirf ye types |
+| `--no-render` | Renderer off — sirf httpx (fast test) |
+| `--render-limit N` | Sirf N pages renderer se (debug/fast) |
 
 Examples:
 ```powershell
