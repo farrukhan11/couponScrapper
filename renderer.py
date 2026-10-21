@@ -32,7 +32,7 @@ CACHE_DIR = os.environ.get("RENDER_CACHE_DIR", ".render_cache")
 CACHE_TTL = int(os.environ.get("RENDER_CACHE_TTL", "3600"))
 DEFAULT_TIMEOUT = int(os.environ.get("RENDER_TIMEOUT", "45000"))
 DEFAULT_WAIT = int(os.environ.get("RENDER_WAIT", "1800"))
-CHALLENGE_WAIT = int(os.environ.get("RENDER_CHALLENGE_WAIT", "25000"))
+CHALLENGE_WAIT = int(os.environ.get("RENDER_CHALLENGE_WAIT", "15000"))
 REVEAL_WAIT = int(os.environ.get("RENDER_REVEAL_WAIT", "2500"))
 
 CHALLENGE_RE = re.compile(
@@ -47,6 +47,12 @@ REVEAL_JS = r"""
 (async () => {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     // Navigation guard: reveal clicks se store par redirect na ho
+    document.querySelectorAll('a[href]').forEach(a => {
+        const h = (a.getAttribute('href') || '').trim();
+        if (h && !h.startsWith('#') && !h.startsWith('javascript')) {
+            try { a.removeAttribute('href'); } catch (_) {}
+        }
+    });
     document.addEventListener('click', e => {
         const a = e.target.closest && e.target.closest('a');
         if (a) { try { e.preventDefault(); } catch (_) {} }
@@ -66,7 +72,8 @@ REVEAL_JS = r"""
         return t && t.length <= 40 && ["get code","reveal code","view code",
             "copy code","show code","see code","reveal","show coupon","get coupon",
             "show discount","get discount","show voucher","get voucher","unmask",
-            "unlock"].some(w => t.includes(w));
+            "unlock","get promo","show promo","view promo","reveal promo",
+            "promo code"].some(w => t.includes(w));
     };
     const sel = "button, a, [role='button']";
     for (let round = 0; round < 2; round++) {
@@ -87,7 +94,7 @@ REVEAL_JS = r"""
     if (ra) { try { ra.scrollIntoView({block:"center"}); ra.click(); await sleep(1800); } catch(e){} }
     let clicked = 0;
     for (const b of [...document.querySelectorAll(sel)]) {
-        if (clicked >= 12) break;
+        if (clicked >= __CLICK_LIMIT__) break;
         const t = (b.innerText||"").trim();
         if (!isReveal(t)) continue;
         try { b.scrollIntoView({block:"center"}); b.click(); clicked++;
@@ -161,12 +168,19 @@ def _origin(url):
     return (m.group(1) + "/") if m else ""
 
 
-def _render_one(ctx, url, engine, reveal, js, wait_for, wait_ms, timeout):
-    page = ctx.new_page()
+def _render_page(page, ctx, url, engine, reveal, js, wait_for, wait_ms, timeout,
+                 eval_js=None):
     status = None
+    data = None
+    nav_timeout = min(timeout or DEFAULT_TIMEOUT, 30000)
     try:
         try:
-            resp = page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            page.set_default_timeout(15000)
+            page.set_default_navigation_timeout(nav_timeout)
+        except Exception:
+            pass
+        try:
+            resp = page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
             status = resp.status if resp else None
         except Exception:
             status = status or 0
@@ -180,9 +194,9 @@ def _render_one(ctx, url, engine, reveal, js, wait_for, wait_ms, timeout):
         if (status in (403, 503) or is_challenge(html0)) and origin and \
                 origin.rstrip("/") != (url or "").rstrip("/"):
             try:
-                page.goto(origin, wait_until="domcontentloaded", timeout=timeout)
+                page.goto(origin, wait_until="domcontentloaded", timeout=nav_timeout)
                 page.wait_for_timeout(2500)
-                resp = page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                resp = page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
                 status = resp.status if resp else status
             except Exception:
                 pass
@@ -226,7 +240,8 @@ def _render_one(ctx, url, engine, reveal, js, wait_for, wait_ms, timeout):
         if reveal:
             try:
                 pre_html = html
-                page.evaluate(REVEAL_JS)
+                limit = int(getattr(config, "REVEAL_CLICK_LIMIT", 30) or 30)
+                page.evaluate(REVEAL_JS.replace("__CLICK_LIMIT__", str(limit)))
                 page.wait_for_timeout(REVEAL_WAIT)
                 if _origin(page.url) != _origin(url):
                     navigated = True       # store par redirect ho gaya — pre-reveal HTML rakho
@@ -245,21 +260,34 @@ def _render_one(ctx, url, engine, reveal, js, wait_for, wait_ms, timeout):
             except Exception:
                 pass
 
+        # ---- structured extraction (eval_js se value wapas) ----
+        if eval_js:
+            try:
+                data = page.evaluate(eval_js)
+            except Exception:
+                data = None
+
         try:
             title = page.title()
         except Exception:
             title = ""
         final_url = page.url
     finally:
+        # popups/new tabs band karo (main page reuse hoti hai)
         try:
-            page.close()
+            for p in list(ctx.pages):
+                if p is not page:
+                    try:
+                        p.close()
+                    except Exception:
+                        pass
         except Exception:
             pass
 
     return {
         "url": url, "final_url": final_url, "status": status, "title": title,
         "html": html, "engine": engine, "challenge": is_challenge(html),
-        "spa": is_spa(html), "navigated": navigated, "elapsed": 0,
+        "spa": is_spa(html), "navigated": navigated, "data": data, "elapsed": 0,
     }
 
 
@@ -267,19 +295,22 @@ def _render_one(ctx, url, engine, reveal, js, wait_for, wait_ms, timeout):
 # PUBLIC
 # ============================================================
 def render(url, reveal=False, js=None, wait_for=None, wait_ms=None,
-           timeout=None, return_markdown=False, use_cache=True):
+           timeout=None, return_markdown=False, use_cache=True, eval_js=None):
     res = render_many([url], reveal=reveal, js=js, wait_for=wait_for,
                       wait_ms=wait_ms, timeout=timeout,
-                      return_markdown=return_markdown, use_cache=use_cache)
+                      return_markdown=return_markdown, use_cache=use_cache,
+                      eval_js=eval_js)
     return res.get(url, {"url": url, "status": 0, "html": "", "title": "",
                          "engine": "", "error": "render failed"})
 
 
 def render_many(urls, reveal=False, js=None, wait_for=None, wait_ms=None,
-                timeout=None, return_markdown=False, use_cache=True):
+                timeout=None, return_markdown=False, use_cache=True, eval_js=None):
     urls = list(dict.fromkeys(u for u in urls if u))
     wait_ms = DEFAULT_WAIT if wait_ms is None else wait_ms
     timeout = DEFAULT_TIMEOUT if timeout is None else timeout
+    if eval_js:
+        use_cache = False       # eval results cache na karein
     out = {}
     todo = []
     for u in urls:
@@ -292,21 +323,52 @@ def render_many(urls, reveal=False, js=None, wait_for=None, wait_ms=None,
     if not todo:
         return out
 
+    profile = getattr(config, "RENDER_PROFILE_DIR", ".render_profile")
+    total = len(todo)
+    page = None
     try:
-        with browser_context(headless=getattr(config, "HEADLESS", False)) as (ctx, browser, engine):
-            for u in todo:
+        with browser_context(headless=getattr(config, "HEADLESS", False),
+                             profile_dir=profile) as (ctx, browser, engine):
+            try:
+                page = ctx.new_page()
+            except Exception:
+                page = None
+            for i, u in enumerate(todo, 1):
                 t0 = time.time()
                 try:
-                    r = _render_one(ctx, u, engine, reveal, js, wait_for, wait_ms, timeout)
+                    if page is None or page.is_closed():
+                        page = ctx.new_page()
+                    r = _render_page(page, ctx, u, engine, reveal, js,
+                                     wait_for, wait_ms, timeout, eval_js=eval_js)
                 except Exception as e:
                     r = {"url": u, "status": 0, "html": "", "title": "",
                          "engine": engine, "error": str(e)[:150]}
+                    try:
+                        if page and page.is_closed():
+                            page = None
+                    except Exception:
+                        page = None
+                # hard-fail par ek retry
+                if not r.get("html") and r.get("status") in (0, None):
+                    try:
+                        if page is None or page.is_closed():
+                            page = ctx.new_page()
+                        r2 = _render_page(page, ctx, u, engine, reveal, js,
+                                          wait_for, wait_ms, timeout, eval_js=eval_js)
+                        if r2.get("html"):
+                            r = r2
+                    except Exception:
+                        pass
                 r["elapsed"] = round(time.time() - t0, 2)
                 if return_markdown and r.get("html"):
                     r["markdown"] = _to_markdown(r["html"])
                 if use_cache and r.get("html") and not r.get("challenge"):
                     _cache_set(u, reveal, wait_ms, js, r)
                 out[u] = r
+                print(f"   render [{i}/{total}] {r.get('status')} "
+                      f"{r.get('elapsed')}s "
+                      f"{'CHALLENGE ' if r.get('challenge') else ''}"
+                      f"{u[:78]}", flush=True)
     except Exception as e:
         for u in todo:
             out.setdefault(u, {"url": u, "status": 0, "html": "", "title": "",

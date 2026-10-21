@@ -25,7 +25,9 @@ VERSION = "stage1"
 
 def launch_args():
     return ["--disable-blink-features=AutomationControlled",
-            "--no-sandbox", "--disable-dev-shm-usage"]
+            "--no-sandbox", "--disable-dev-shm-usage",
+            "--no-first-run", "--no-default-browser-check",
+            "--disable-session-crashed-bubble", "--hide-crash-restore-bubble"]
 
 
 def _launch_kwargs():
@@ -78,12 +80,12 @@ def _block_media(ctx):
         pass
 
 
-def _open(p, headless, viewport):
+def _open(p, headless, viewport, profile_dir=None):
     """Persistent context -> fallback normal context. Return (ctx, browser)."""
     vp = viewport or {"width": 1280, "height": 800}
     kwargs = _launch_kwargs()
     use_persist = getattr(config, "USE_PERSISTENT_PROFILE", True)
-    profile = getattr(config, "CHROME_PROFILE_DIR", "chrome_profile") or ""
+    profile = profile_dir or getattr(config, "CHROME_PROFILE_DIR", "chrome_profile") or ""
     if use_persist and profile:
         profile_path = profile if os.path.isabs(profile) else os.path.join(
             os.path.dirname(os.path.abspath(__file__)), profile)
@@ -113,7 +115,7 @@ def _close(ctx, browser):
 
 
 @contextlib.contextmanager
-def browser_context(headless=None, viewport=None):
+def browser_context(headless=None, viewport=None, profile_dir=None):
     """Yield (ctx, browser, engine_name). Engine/launch failure par agla engine."""
     if headless is None:
         headless = getattr(config, "HEADLESS", False)
@@ -131,7 +133,7 @@ def browser_context(headless=None, viewport=None):
             errors.append(f"{engine}: start ({str(e)[:40]})")
             continue
         try:
-            ctx, browser = _open(p, headless, viewport)
+            ctx, browser = _open(p, headless, viewport, profile_dir)
         except Exception as e:
             errors.append(f"{engine}: launch ({str(e)[:60]})")
             try:

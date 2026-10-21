@@ -27,6 +27,7 @@ import httpx
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 import renderer
+import search
 from browser_engine import browser_context
 from brand_matcher import find_matches, load_index
 from brand_site import scrape_brand_site
@@ -141,6 +142,27 @@ def looks_like_code(text):
     return False
 
 
+AUTH_CODE_RE = re.compile(r"^[A-Za-z0-9._\-]{3,30}$")
+
+
+def looks_like_auth_code(text):
+    """data-* / JSON declared codes: letters-only bhi valid (jaise REVOWELL)."""
+    if not text:
+        return False
+    t = text.strip()
+    if not (3 <= len(t) <= 30):
+        return False
+    if " " in t or "*" in t:
+        return False
+    if not AUTH_CODE_RE.match(t):
+        return False
+    if t.lower() in BAD_WORDS:
+        return False
+    if ANALYTICS_RE.match(t):
+        return False
+    return True
+
+
 TNR_COPY_BTN = re.compile(r'title="Copy code and go to store"')
 TNR_STATUS_RE = re.compile(r">(Worked|Failed|Restricted|Expired)</span>")
 
@@ -186,10 +208,14 @@ def mine_codes(html_text, url=""):
 
     def add(code, method):
         c = code.strip().upper()
-        if not c or c in found or not looks_like_code(c):
+        if not c or c in found:
             return
-        if method == "text" and _text_noise(c):
-            return
+        if method in ("html_attr", "html_json"):
+            if not looks_like_auth_code(c):
+                return
+        else:
+            if not looks_like_code(c) or _text_noise(c):
+                return
         found[c] = method
 
     # 1) data-* attributes (authoritative)
@@ -197,6 +223,18 @@ def mine_codes(html_text, url=""):
             r'(?:data-code|data-clipboard-text|data-coupon-code|data-promo-code'
             r'|data-voucher-code|data-clipboard)=["\']([^"\']{3,25})["\']', html_text):
         add(m, "html_attr")
+
+    # 1b) class/id-based code containers (jaise <span class="coupon-code">CODE</span>)
+    for m in re.findall(
+            r'<(?:span|div|strong|b|em)[^>]*(?:class|id)="[^"]*'
+            r'(?:coupon-code|promo-code|voucher-code|discount-code)[^"]*"'
+            r'[^>]*>([^<]{2,40})</(?:span|div|strong|b|em)>', html_text, re.I):
+        txt = m.strip()
+        if re.search(r"(get|show|reveal|view|copy)\s+(promo\s*)?code", txt, re.I):
+            continue
+        if txt.lower() in ("code", "coupon code", "promo code"):
+            continue
+        add(txt, "html_attr")
 
     # 2) JSON/JS keys
     _code_keys = (r'(?:code|coupon_code|promo_code|voucher_code|couponCode'
@@ -222,12 +260,17 @@ def mine_codes(html_text, url=""):
             if re.search(r"\d", m) and _strict_text_code(m.upper()):
                 add(m, "text")
 
-    # 4) suffix-duplicate cleanup: agar "IRST30" aur "FIRST30" dono hain to
-    # chhota (truncated) wala drop karo.
+    # 4) suffix-duplicate cleanup sirf TEXT-mined codes par (authoritative na hatao)
     if len(found) > 1:
-        codes = set(found)
-        drop = {a for a in codes for b in codes
-                if a != b and len(a) < len(b) and b.endswith(a)}
+        auth = [c for c, m in found.items() if m in ("html_attr", "html_json")]
+        drop = set()
+        for a, m in list(found.items()):
+            if m != "text":
+                continue
+            for b in auth:
+                if a != b and len(a) < len(b) and b.endswith(a):
+                    drop.add(a)
+                    break
         for d in drop:
             found.pop(d, None)
 
@@ -262,8 +305,14 @@ def cut_competitor_sections(html):
     (nav/footer/JS metadata ke early mentions ignore)."""
     if not html:
         return html
+    # script/style ko same-length blanks se mask karo (JS ke "competitors:" par
+    # galti se page cut na ho). Positions same rehti hain.
+    def _mask(m):
+        return "\x00" * len(m.group(0))
+    masked = re.sub(r"<script\b.*?</script>", _mask, html, flags=re.S | re.I)
+    masked = re.sub(r"<style\b.*?</style>", _mask, masked, flags=re.S | re.I)
     cut_at = None
-    for m in COMPETITOR_PAT.finditer(html):
+    for m in COMPETITOR_PAT.finditer(masked):
         if m.start() >= len(html) * 0.5:
             cut_at = m.start()
             break
@@ -361,7 +410,7 @@ def browser_fetch_pages(urls_by_origin, retries=RETRIES):
     return out
 
 
-def fetch_pages_for_brands(url_list):
+def fetch_pages_for_brands(url_list, render=True):
     """httpx fast pass; blocked/SPA/challenge pages → apna renderer (direct nav)."""
     html_map = {}
     blocked = []
@@ -371,7 +420,8 @@ def fetch_pages_for_brands(url_list):
             html_map[url] = txt
         else:
             blocked.append(url)
-    if blocked:
+    still = list(blocked)
+    if blocked and render:
         print(f"   🌐 Renderer fallback: {len(blocked)} URLs "
               f"(direct nav + challenge wait)...")
         rendered = renderer.render_many(blocked)
@@ -379,14 +429,16 @@ def fetch_pages_for_brands(url_list):
             h = r.get("html") or ""
             if h and not _is_challenge_page(h):
                 html_map[u] = h
-        # last resort: purana browser batch (jo abhi bhi missing hain)
         still = [u for u in blocked if u not in html_map]
         if still:
             print(f"   ↻ Renderer miss: {len(still)} URLs — old browser fallback")
-            by_origin = {}
-            for u in still:
-                by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
-            html_map.update(browser_fetch_pages(by_origin))
+    elif blocked:
+        print(f"   ⏭️  Renderer off — old browser fallback: {len(blocked)} URLs")
+    if still:
+        by_origin = {}
+        for u in still:
+            by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
+        html_map.update(browser_fetch_pages(by_origin))
     return html_map
 
 
@@ -417,6 +469,7 @@ REVEAL_JS = r"""
             "get code", "reveal code", "view code", "copy code", "show code",
             "see code", "reveal", "show coupon", "get coupon", "show discount",
             "get discount", "show voucher", "get voucher", "unmask", "unlock",
+            "get promo", "show promo", "view promo", "reveal promo", "promo code",
         ].some(w => t.includes(w));
     };
     const btnSel = "button, a, [role='button']";
@@ -451,7 +504,7 @@ REVEAL_JS = r"""
     let clicked = 0;
     const btns2 = [...document.querySelectorAll(btnSel)];
     for (const b of btns2) {
-        if (clicked >= 12) break;
+        if (clicked >= 30) break;
         const t = (b.innerText || "").trim();
         if (!isReveal(t)) continue;
         try {
@@ -513,15 +566,24 @@ async def crawl4ai_reveal_pass(urls):
     return out
 
 
-async def render_reveal_pass(urls):
-    """Apna renderer: pehle direct render (no reveal); kam mile to reveal pass.
+REVEAL_TEXT_RE = re.compile(
+    r"(get\s*(promo\s*)?code|show\s*(promo\s*)?code|reveal\s*(promo\s*)?code"
+    r"|view\s*(promo\s*)?code|copy\s*(promo\s*)?code|get\s*promo|show\s*promo"
+    r"|view\s*promo|reveal\s*promo|get\s*coupon|show\s*coupon|unlock)", re.I)
+
+
+async def render_reveal_pass(urls, enabled=True, limit=None):
+    """Renderer: Pass 1 direct render; Pass 2 reveal (buttons) jahan zaroorat.
     Return: {url: {"codes": {code: method}, "deals": [{title, url}]}}"""
-    if not urls:
+    if not urls or not enabled:
         return {}
+    if limit:
+        urls = urls[:limit]
+    include_deals = bool(getattr(config, "INCLUDE_DEALS", False))
     out = {}
     incomplete = []
 
-    # Pass 1: direct render — zyadatar codes DOM/JSON mein hote hain
+    # Pass 1: direct render - zyadatar codes DOM/JSON mein hote hain
     rendered = await asyncio.to_thread(renderer.render_many, urls, reveal=False)
     for u, r in rendered.items():
         html = r.get("html") or ""
@@ -529,13 +591,15 @@ async def render_reveal_pass(urls):
             continue
         clean = cut_competitor_sections(html)
         codes = {c["code"]: c["method"] for c in mine_codes(html, u)}
-        deals = mine_deals(clean, u)
+        deals = mine_deals(clean, u) if include_deals else []
         if codes or deals:
             out[u] = {"codes": codes, "deals": deals}
-        if len(codes) < 3 and not deals:
+        # reveal chahiye: kam codes, ya page par reveal-buttons majood hain
+        has_reveal = bool(REVEAL_TEXT_RE.search(html))
+        if len(codes) < 3 or has_reveal:
             incomplete.append(u)
 
-    # Pass 2: reveal sirf un pages par jahan kam mila
+    # Pass 2: reveal buttons (Reveal-all pehle, phir individual; limit config)
     if incomplete:
         rev = await asyncio.to_thread(renderer.render_many, incomplete, reveal=True)
         for u, r in rev.items():
@@ -544,7 +608,7 @@ async def render_reveal_pass(urls):
                 continue
             clean = cut_competitor_sections(html)
             codes = {c["code"]: c["method"] for c in mine_codes(html, u)}
-            deals = mine_deals(clean, u)
+            deals = mine_deals(clean, u) if include_deals else []
             prev = out.get(u, {})
             merged_codes = dict(prev.get("codes", {}))
             merged_codes.update(codes)
@@ -557,7 +621,8 @@ async def render_reveal_pass(urls):
 # ============================================================
 # MAIN PIPELINE
 # ============================================================
-async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
+async def run(brands, region="us", brand_site=True, sale_limit=250, types=None,
+              render=True, render_limit=None):
     index = load_index()
     print(f"🗂️  Index: {len(index)} sites, {sum(len(m) for m in index.values())} stores\n")
 
@@ -580,7 +645,7 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
                 all_urls.append(u)
 
     print(f"\n🌐 Fetching {len(all_urls)} pages (httpx → browser fallback)...")
-    html_map = await asyncio.to_thread(fetch_pages_for_brands, all_urls)
+    html_map = await asyncio.to_thread(fetch_pages_for_brands, all_urls, render)
     print(f"   ✅ {len(html_map)}/{len(all_urls)} pages mile")
 
     # ---- missing pages: fresh browser se ek retry pass ----
@@ -621,16 +686,16 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
         print(f"   🚫 {n_irrelevant} pages brand-relevant nahi the — mining skip")
 
     # ---- reveal pass (apna renderer; crawl4ai secondary fallback) ----
-    # Saari EXACT URLs (JS-render asli coupon grid) + low-static pages.
-    exact_urls = {u for u, t in url_tier.items() if t == "exact"}
+    # Sirf woh pages jahan static mining se kam codes mile (< threshold).
     candidates = [u for u in all_urls
-                  if u in static_map and
-                  (u in exact_urls or len(static_map[u]) < REVEAL_SKIP_THRESHOLD)]
+                  if u in static_map and len(static_map[u]) < REVEAL_SKIP_THRESHOLD]
+    if render_limit:
+        candidates = candidates[:render_limit]
     print(f"\n🖥️  render reveal pass: {len(candidates)} pages "
           f"(direct nav + challenge wait + buttons auto-click)...")
     reveal_map = {}
-    if candidates:
-        reveal_map = await render_reveal_pass(candidates)
+    if candidates and render:
+        reveal_map = await render_reveal_pass(candidates, enabled=render)
         print(f"   🖥️  renderer: {len(reveal_map)}/{len(candidates)} pages")
         missed = [u for u in candidates if u not in reveal_map]
         if missed:
@@ -731,22 +796,6 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
     if types:
         offers = [o for o in offers if o.get("type") in types]
 
-    def _safe_write(path, fnames, data):
-        try:
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=fnames, extrasaction="ignore")
-                w.writeheader()
-                w.writerows(data)
-            return path
-        except PermissionError:
-            fallback = path.rsplit(".", 1)[0] + "_latest.csv"
-            print(f"⚠️ Warning: {path} is locked (possibly open in another program). Writing to {fallback} instead.")
-            with open(fallback, "w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, fieldnames=fnames, extrasaction="ignore")
-                w.writeheader()
-                w.writerows(data)
-            return fallback
-
     # ---- save results.csv (codes) ----
     fields = ["brand", "code", "method", "via", "source_url"]
     out_results = _safe_write(RESULTS_CSV, fields, rows)
@@ -763,13 +812,233 @@ async def run(brands, region="us", brand_site=True, sale_limit=250, types=None):
     return offers
 
 
+def _safe_write(path, fnames, data):
+    """CSV likho; file locked ho to `_latest.csv` fallback."""
+    try:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fnames, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(data)
+        return path
+    except PermissionError:
+        fallback = path.rsplit(".", 1)[0] + "_latest.csv"
+        print(f"⚠️  {path} locked — {fallback} mein likh rahe hain")
+        with open(fallback, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fnames, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(data)
+        return fallback
+
+
+# ============================================================
+# GOOGLE (Serper) MODE
+# ============================================================
+ALWAYS_DOMAINS = {"simplycodes.com", "groupon.co.uk"}
+
+
+def _domain_of(url):
+    try:
+        return url.split("/")[2].lower().replace("www.", "")
+    except Exception:
+        return ""
+
+
+def _dedupe_domains(urls):
+    seen, out = set(), []
+    for u in urls:
+        d = _domain_of(u)
+        if not d or d in seen:
+            continue
+        seen.add(d)
+        out.append(u)
+    return out
+
+
+def _always_urls(brand, index, add_simplycodes=True, add_groupon=True):
+    """simplycodes + groupon store URLs (index se; na mile to construct)."""
+    want = set()
+    if add_simplycodes:
+        want.add("simplycodes.com")
+    if add_groupon:
+        want.add("groupon.co.uk")
+    urls = []
+    try:
+        hits = find_matches(brand, index)
+    except Exception:
+        hits = {}
+    for dom, h in hits.items():
+        if dom in want:
+            urls.append(h["url"])
+            want.discard(dom)
+    dom = search.brand_domain(brand)
+    slug = re.sub(r"[^a-z0-9]+", "-", search.brand_name(brand).lower()).strip("-")
+    if "simplycodes.com" in want and dom:
+        urls.append(f"https://simplycodes.com/store/{dom}")
+    if "groupon.co.uk" in want and slug:
+        urls.append(f"https://www.groupon.co.uk/discount-codes/{slug}")
+    return urls
+
+
+async def run_search(brands, region_override=None, max_results=None,
+                     add_simplycodes=True, add_groupon=True,
+                     brand_site=None, sale_limit=250, types=None,
+                     render=True, render_limit=None):
+    """Google (Serper) mode: search → page-1 sites + simplycodes/groupon → codes."""
+    index = load_index()
+    max_results = max_results or getattr(config, "SEARCH_MAX_RESULTS", 10)
+    include_deals = bool(getattr(config, "INCLUDE_DEALS", False))
+    if brand_site is None:
+        brand_site = bool(getattr(config, "INCLUDE_BRAND_SITE", False))
+    print(f"🗂️  Index: {len(index)} sites, "
+          f"{sum(len(m) for m in index.values())} stores\n")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rows, offers = [], []
+
+    for raw in brands:
+        name, dom, rhint = search.parse_brand(raw)
+        b = f"{name}|{dom}" if dom else name
+        eff_region = region_override or rhint
+        print(f"\n🔎 {b}" + (f"  [region={eff_region}]" if eff_region else ""))
+        # search_brand ko thread mein chalao (sync Playwright asyncio loop mein nahi chalta)
+        region, results = await asyncio.to_thread(
+            search.search_brand, raw, max_results, eff_region)
+        bdom = search.brand_domain(raw)
+        urls = _always_urls(b, index, add_simplycodes, add_groupon)
+        # brand ki apni site (aur www variant) Google results se hata do
+        urls += [r["url"] for r in results if _domain_of(r["url"]) != bdom]
+        urls = _dedupe_domains(urls)
+        if not urls:
+            print("   ⚠️  koi URL nahi mila — skip")
+            continue
+        print(f"   🌐 {len(urls)} URLs (region={region})...")
+        html_map = await asyncio.to_thread(fetch_pages_for_brands, urls, render)
+        print(f"   ✅ {len(html_map)}/{len(urls)} pages mile")
+
+        # static mining (brand ki apni site par coupon codes nahi — product names noise)
+        static_map = {}
+        for u in urls:
+            h = html_map.get(u)
+            if not h:
+                continue
+            # Google mode: competitor-cut nahi (valid codes bhi kat jate hain)
+            static_map[u] = ([] if _domain_of(u) == bdom
+                             else mine_codes(h, u))
+
+        # reveal pass (renderer; crawl4ai/browser fallback)
+        candidates = [u for u in urls
+                      if u in static_map and _domain_of(u) != bdom
+                      and (len(static_map[u]) < REVEAL_SKIP_THRESHOLD
+                           or REVEAL_TEXT_RE.search(html_map.get(u) or ""))]
+        if render_limit:
+            candidates = candidates[:render_limit]
+        reveal_map = {}
+        if candidates and render:
+            print(f"   🖥️  render reveal pass: {len(candidates)} pages...")
+            reveal_map = await render_reveal_pass(candidates, enabled=render)
+            missed = [u for u in candidates if u not in reveal_map]
+            if missed:
+                c4 = await crawl4ai_reveal_pass(missed)
+                reveal_map.update(c4)
+                missed = [u for u in missed if u not in reveal_map]
+            if missed:
+                by_origin = {}
+                for u in missed:
+                    by_origin.setdefault("/".join(u.split("/")[:3]), []).append(u)
+                fb = await asyncio.to_thread(browser_fetch_pages, by_origin)
+                for u, h in fb.items():
+                    if h:
+                        clean = cut_competitor_sections(h)
+                        reveal_map[u] = {
+                            "codes": {c["code"]: c["method"]
+                                      for c in mine_codes(h, u)},
+                            "deals": mine_deals(clean, u)}
+            print(f"   🖥️  renderer: {len(reveal_map)}/{len(candidates)} pages")
+
+        # deals (abhi off — client ke rules baad mein)
+        deals, seen_d = [], set()
+        if include_deals:
+            for u in urls:
+                h = html_map.get(u)
+                if h:
+                    for d in mine_deals(cut_competitor_sections(h), u):
+                        k = (d["title"].lower(), d["url"])
+                        if k not in seen_d:
+                            seen_d.add(k)
+                            deals.append({"title": d["title"], "url": d["url"], "page": u})
+            for u, payload in reveal_map.items():
+                for d in (payload or {}).get("deals", []):
+                    k = (d["title"].lower(), d["url"])
+                    if k not in seen_d:
+                        seen_d.add(k)
+                        deals.append({"title": d["title"], "url": d["url"], "page": u})
+
+        # merge codes
+        codes = {}
+        for u in urls:
+            for c in static_map.get(u, []):
+                if c["code"] not in codes:
+                    codes[c["code"]] = (c["method"], u, "static")
+            for c, method in (reveal_map.get(u) or {}).get("codes", {}).items():
+                if c not in codes:
+                    codes[c] = (method, u, "crawl4ai")
+
+        print(f"   🎫 {len(codes)} codes, {len(deals)} deals")
+        for c, (method, src, via) in codes.items():
+            rows.append({"brand": b, "code": c, "method": method,
+                         "via": via, "source_url": src})
+            offers.append({"brand": b, "type": "coupon", "offer": c,
+                           "method": method, "via": via, "source_url": src,
+                           "region": region, "found_at": now})
+        for d in deals:
+            offers.append({"brand": b, "type": "deal", "title": d["title"],
+                           "url": d["url"], "source_url": d["page"],
+                           "method": "html", "via": "static",
+                           "region": region, "found_at": now})
+
+        # brand ki apni site (sale/shipping/newsletter)
+        if brand_site:
+            try:
+                bs = await asyncio.to_thread(scrape_brand_site, b, region, sale_limit)
+            except Exception:
+                bs = []
+            for r in bs:
+                r["brand"] = b
+                r["region"] = region
+                r["found_at"] = now
+                offers.append(r)
+            print(f"   🏬 {len(bs)} brand-site offers")
+
+        await asyncio.sleep(getattr(config, "SEARCH_PAUSE", 1.0))
+
+    if types:
+        offers = [o for o in offers if o.get("type") in types]
+
+    out_results = _safe_write(RESULTS_CSV,
+                              ["brand", "code", "method", "via", "source_url"],
+                              rows)
+    out_offers = _safe_write(OFFERS_CSV, OFFER_FIELDS, offers)
+    counts = {}
+    for o in offers:
+        counts[o["type"]] = counts.get(o["type"], 0) + 1
+    print(f"\n{'=' * 50}")
+    print(f"✅ DONE: {len(rows)} codes → {out_results}")
+    print(f"✅ DONE: {len(offers)} offers → {out_offers}  {counts}")
+    return offers
+
+
 if __name__ == "__main__":
     # --file brands.txt  → brands file se list (format: Name|brandurl)
     file_arg = None
-    region = getattr(config, "REGION", "us")
-    brand_site = getattr(config, "SCRAPE_BRAND_SITE", True)
+    source = "google"          # google (Serper) | index (purana sitemap flow)
+    region = None              # None = auto (google) / config default (index)
+    brand_site = None          # None = google: off (coupon-only) / index: config
     sale_limit = getattr(config, "SALE_LIMIT", 250)
+    max_results = getattr(config, "SEARCH_MAX_RESULTS", 10)
+    add_simplycodes = True
+    add_groupon = True
     types = None
+    render = True
+    render_limit = None
     args = []
     argv = sys.argv[1:]
     i = 0
@@ -779,9 +1048,28 @@ if __name__ == "__main__":
             file_arg = argv[i + 1]
             i += 2
             continue
+        if a == "--source" and i + 1 < len(argv):
+            source = argv[i + 1].strip().lower()
+            i += 2
+            continue
         if a == "--region" and i + 1 < len(argv):
             region = argv[i + 1].strip().lower()
             i += 2
+            continue
+        if a == "--max-results" and i + 1 < len(argv):
+            try:
+                max_results = int(argv[i + 1])
+            except Exception:
+                pass
+            i += 2
+            continue
+        if a == "--no-simplycodes":
+            add_simplycodes = False
+            i += 1
+            continue
+        if a == "--no-groupon":
+            add_groupon = False
+            i += 1
             continue
         if a == "--sale-limit" and i + 1 < len(argv):
             try:
@@ -802,6 +1090,17 @@ if __name__ == "__main__":
             brand_site = True
             i += 1
             continue
+        if a == "--no-render":
+            render = False
+            i += 1
+            continue
+        if a == "--render-limit" and i + 1 < len(argv):
+            try:
+                render_limit = int(argv[i + 1])
+            except Exception:
+                pass
+            i += 2
+            continue
         if a.startswith("--"):
             i += 1
             continue
@@ -812,10 +1111,24 @@ if __name__ == "__main__":
         with open(file_arg, "r", encoding="utf-8-sig") as f:
             args = [l.strip() for l in f if l.strip()]
     if not args:
-        print('Usage: python page_scraper.py "Shop LC|shoplc.com" ... | '
-              '--file brands.txt [--region us|uk] [--no-brand-site] '
-              '[--sale-limit 250] [--types coupon,deal,sale,shipping,newsletter]')
+        print('Usage: python page_scraper.py --file brands.txt '
+              '[--source google|index] [--region us|uk] [--max-results 10] '
+              '[--no-simplycodes] [--no-groupon] [--no-brand-site] '
+              '[--sale-limit 250] [--types coupon,deal,sale,shipping,newsletter] '
+              '[--no-render] [--render-limit N]')
         sys.exit(1)
 
-    asyncio.run(run(args, region=region, brand_site=brand_site,
-                    sale_limit=sale_limit, types=types))
+    if source == "index":
+        bs = getattr(config, "SCRAPE_BRAND_SITE", True) if brand_site is None else brand_site
+        asyncio.run(run(args, region=(region or getattr(config, "REGION", "us")),
+                        brand_site=bs, sale_limit=sale_limit, types=types,
+                        render=render, render_limit=render_limit))
+    else:
+        # brand_site=None -> run_search config (INCLUDE_BRAND_SITE, default off)
+        asyncio.run(run_search(args, region_override=region,
+                               max_results=max_results,
+                               add_simplycodes=add_simplycodes,
+                               add_groupon=add_groupon,
+                               brand_site=brand_site, sale_limit=sale_limit,
+                               types=types, render=render,
+                               render_limit=render_limit))

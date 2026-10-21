@@ -42,6 +42,8 @@ STEALTH_ENGINE = os.environ.get("STEALTH_ENGINE", "auto").strip().lower()
 USE_PERSISTENT_PROFILE = os.environ.get("USE_PERSISTENT_PROFILE", "1").strip().lower() in (
     "1", "true", "yes", "on")
 CHROME_PROFILE_DIR = os.environ.get("CHROME_PROFILE_DIR", "chrome_profile")
+# Renderer ka alag profile (purane tabs/session restore se bachne ke liye)
+RENDER_PROFILE_DIR = os.environ.get("RENDER_PROFILE_DIR", ".render_profile")
 
 # Images/fonts/media block (bandwidth bachao)
 BLOCK_MEDIA = os.environ.get("BLOCK_MEDIA", "1").strip().lower() in (
@@ -57,6 +59,33 @@ REGION = os.environ.get("SCRAPER_REGION", "us").strip().lower()
 SCRAPE_BRAND_SITE = os.environ.get("SCRAPE_BRAND_SITE", "1").strip().lower() in (
     "1", "true", "yes", "on")
 SALE_LIMIT = int(os.environ.get("SALE_LIMIT", "250") or "250")
+
+# ============================================
+# SEARCH (Google via Serper.dev)
+# ============================================
+SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "").strip()
+SEARCH_MAX_RESULTS = int(os.environ.get("SEARCH_MAX_RESULTS", "10") or "10")
+# khali = auto (.co.uk / uk. -> uk, warna us)
+SEARCH_GL = os.environ.get("SEARCH_GL", "").strip().lower()
+# comma-separated query suffixes per region
+SEARCH_QUERY_US = os.environ.get("SEARCH_QUERY_US", "coupon code")
+SEARCH_QUERY_UK = os.environ.get("SEARCH_QUERY_UK", "discount code,voucher code")
+SEARCH_PAUSE = float(os.environ.get("SEARCH_PAUSE", "1.0") or "1.0")
+# sponsored results include (ad-click ke baghair)
+SEARCH_INCLUDE_ADS = os.environ.get("SEARCH_INCLUDE_ADS", "1").strip().lower() in (
+    "1", "true", "yes", "on")
+
+# ============================================
+# COUPON-ONLY MODE
+# ============================================
+# per site max reveal-button clicks
+REVEAL_CLICK_LIMIT = int(os.environ.get("REVEAL_CLICK_LIMIT", "30") or "30")
+# deals mining (abhi off)
+INCLUDE_DEALS = os.environ.get("INCLUDE_DEALS", "0").strip().lower() in (
+    "1", "true", "yes", "on")
+# brand-site sale/shipping/newsletter (abhi off)
+INCLUDE_BRAND_SITE = os.environ.get("INCLUDE_BRAND_SITE", "0").strip().lower() in (
+    "1", "true", "yes", "on")
 
 # ============================================
 # FIRECRAWL FALLBACK (sirf BLOCKED pages ke liye — optional)

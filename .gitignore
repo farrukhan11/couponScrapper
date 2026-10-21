@@ -17,8 +17,9 @@ data/
 jobs/
 .env
 
-# Renderer cache
+# Renderer
 .render_cache/
+.render_profile/
 
 # Others
 .DS_Store
