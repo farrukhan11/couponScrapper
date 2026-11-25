@@ -76,3 +76,6 @@ UI_SECRET_KEY = os.environ.get("UI_SECRET_KEY", "")
 PORT = int(os.environ.get("PORT", "8000") or "8000")
 # Per-run jobs (results/history) yahan save hote hain.
 JOBS_DIR = os.environ.get("JOBS_DIR", "jobs")
+# n8n automation auth for /api/run-top3, /api/status, /api/results.
+# Send as HTTP header: X-API-Key: <value>
+N8N_API_KEY = os.environ.get("N8N_API_KEY", "").strip()

@@ -70,6 +70,21 @@ def login_required(f):
     return wrap
 
 
+def api_or_n8n_required(f):
+    """Allow normal UI session OR n8n X-API-Key authentication."""
+    @wraps(f)
+    def wrap(*a, **kw):
+        if auth_ok():
+            return f(*a, **kw)
+        expected = (getattr(config, "N8N_API_KEY", "") or "").strip()
+        provided = (request.headers.get("X-API-Key") or "").strip()
+        if expected and provided and hmac.compare_digest(
+                provided.encode("utf-8"), expected.encode("utf-8")):
+            return f(*a, **kw)
+        return jsonify({"error": "unauthorized"}), 401
+    return wrap
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if not app.config["PASSWORD"]:
@@ -185,14 +200,16 @@ def run_job_thread(job_id):
 
     # ---- outputs collect ----
     try:
-        if job["kind"] == "scrape" and os.path.exists(RESULTS_CSV):
-            shutil.copy2(RESULTS_CSV, os.path.join(job["dir"], "results.csv"))
-            try:
-                from summary import build_summary
-                build_summary(os.path.join(job["dir"], "results.csv"),
-                              os.path.join(job["dir"], "summary.csv"))
-            except Exception as e:
-                job["lines"].append(f"[UI WARN] summary fail: {e}")
+        if job["kind"] in ("scrape", "top3"):
+            result_path = os.path.join(job["dir"], "results.csv")
+            if job["kind"] == "scrape" and os.path.exists(RESULTS_CSV):
+                shutil.copy2(RESULTS_CSV, result_path)
+            if os.path.exists(result_path):
+                try:
+                    from summary import build_summary
+                    build_summary(result_path, os.path.join(job["dir"], "summary.csv"))
+                except Exception as e:
+                    job["lines"].append(f"[UI WARN] summary fail: {e}")
         elif job["kind"] == "index" and os.path.exists(INDEX_FILE):
             shutil.copy2(INDEX_FILE, os.path.join(job["dir"], "stores_index.json"))
     except Exception as e:
@@ -224,6 +241,59 @@ def start_job(kind, brands, headless):
         cmd = build_cmd(kind, job_dir, headless)
         job = {
             "id": job_id, "kind": kind, "dir": job_dir, "cmd": cmd,
+            "brands": brands, "headless": headless,
+            "lines": deque(maxlen=MAX_LINES), "done": False, "exit_code": None,
+            "proc": None,
+            "started": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "started_ts": time.time(),
+        }
+        JOBS[job_id] = job
+        _write_meta(job)
+        ACTIVE["id"] = job_id
+        threading.Thread(target=run_job_thread, args=(job_id,), daemon=True).start()
+        return job_id, None
+
+
+def start_top3_job(payload, headless=True, region="us"):
+    """Start n8n Google-top-3 scrape job. Payload must contain 1-4 brands."""
+    raw_brands = payload.get("brands") if isinstance(payload, dict) else None
+    if not isinstance(raw_brands, list) or not raw_brands:
+        return None, "'brands' non-empty array hona chahiye"
+    if len(raw_brands) > 4:
+        return None, "Ek n8n batch mein max 4 brands allowed hain"
+
+    brands = []
+    for item in raw_brands:
+        if not isinstance(item, dict):
+            continue
+        name = (str(item.get("brand") or item.get("name") or
+                    item.get("domain") or "")).strip()
+        if name:
+            brands.append(name)
+    if not brands:
+        return None, "Valid brands nahi mile"
+
+    with LOCK:
+        if ACTIVE["id"] and not JOBS.get(ACTIVE["id"], {}).get("done", True):
+            return None, "Ek job pehle se chal raha hai — pehle usay stop/khatam karo"
+
+        job_id = uuid.uuid4().hex[:10]
+        job_dir = os.path.join(JOBS_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+
+        input_path = os.path.join(job_dir, "top3_input.json")
+        output_path = os.path.join(job_dir, "results.csv")
+        with open(input_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        cmd = [
+            sys.executable, os.path.join(ROOT, "top3_scraper.py"),
+            "--input", input_path,
+            "--output", output_path,
+            "--region", (region or "us").strip().lower(),
+        ]
+        job = {
+            "id": job_id, "kind": "top3", "dir": job_dir, "cmd": cmd,
             "brands": brands, "headless": headless,
             "lines": deque(maxlen=MAX_LINES), "done": False, "exit_code": None,
             "proc": None,
@@ -285,6 +355,24 @@ def api_run():
     return jsonify({"job": job_id})
 
 
+@app.post("/api/run-top3")
+@api_or_n8n_required
+def api_run_top3():
+    """n8n endpoint: up to 4 brands, max 3 ranked Google URLs each."""
+    data = request.get_json(force=True, silent=True) or {}
+    payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+    headless = bool(data.get("headless", True))
+    region = str(data.get("region") or getattr(config, "REGION", "us") or "us")
+    job_id, err = start_top3_job(payload, headless=headless, region=region)
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({
+        "job": job_id,
+        "mode": "google_top3",
+        "brands": len(payload.get("brands") or []),
+    })
+
+
 @app.post("/api/refresh-index")
 @login_required
 def api_refresh_index():
@@ -297,7 +385,7 @@ def api_refresh_index():
 
 
 @app.get("/api/status")
-@login_required
+@api_or_n8n_required
 def api_status():
     view = get_job_view(request.args.get("job", ""))
     if not view:
@@ -330,7 +418,7 @@ def api_jobs():
 
 
 @app.get("/api/results")
-@login_required
+@api_or_n8n_required
 def api_results():
     job_id = request.args.get("job", "")
     job_dir = os.path.join(JOBS_DIR, job_id)
